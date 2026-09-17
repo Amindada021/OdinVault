@@ -71,6 +71,8 @@ public sealed class BackupRecord
     public Guid DatabaseEndpointId { get; set; }
     public string FileName { get; set; } = string.Empty;
     public string FilePath { get; set; } = string.Empty;
+    public bool LocalFileAvailable { get; set; }
+    public DateTime? LocalFileDeletedAtUtc { get; set; }
     public BackupStatus Status { get; set; } = BackupStatus.Pending;
     public VerificationStatus VerificationStatus { get; set; } = VerificationStatus.NotRequested;
     public long? SizeBytes { get; set; }
