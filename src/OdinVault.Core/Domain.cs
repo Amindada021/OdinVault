@@ -21,6 +21,15 @@ public enum VerificationStatus
     Failed = 3
 }
 
+public enum StorageProviderType
+{
+    Local = 1,
+    GoogleDrive = 2,
+    S3 = 3,
+    Sftp = 4,
+    OdinVaultReplica = 5
+}
+
 public sealed class DatabaseEndpoint
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -45,6 +54,7 @@ public sealed class BackupPolicy
     public int MaxLocalBackups { get; set; } = 7;
     public bool VerifyAfterBackup { get; set; } = true;
     public bool IsEnabled { get; set; } = true;
+    public DateTime? LastScheduledRunUtc { get; set; }
 }
 
 public sealed class BackupRecord
@@ -80,3 +90,23 @@ public sealed record BackupExecutionResult(
     string FilePath,
     long SizeBytes,
     VerificationStatus VerificationStatus);
+
+public sealed record StorageUploadRequest(
+    Guid BackupRecordId,
+    string FileName,
+    string LocalPath,
+    string? DestinationPath = null);
+
+public sealed record StorageUploadResult(
+    string Provider,
+    string RemoteId,
+    string? RemotePath,
+    long SizeBytes);
+
+public interface IBackupStorageProvider
+{
+    StorageProviderType Type { get; }
+    Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken cancellationToken = default);
+    Task<Stream> OpenReadAsync(string remoteId, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string remoteId, CancellationToken cancellationToken = default);
+}
