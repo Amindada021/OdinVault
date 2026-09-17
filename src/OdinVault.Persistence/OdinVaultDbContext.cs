@@ -8,6 +8,9 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
     public DbSet<DatabaseEndpoint> DatabaseEndpoints => Set<DatabaseEndpoint>();
     public DbSet<BackupPolicy> BackupPolicies => Set<BackupPolicy>();
     public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
+    public DbSet<StorageTarget> StorageTargets => Set<StorageTarget>();
+    public DbSet<DatabaseStorageTarget> DatabaseStorageTargets => Set<DatabaseStorageTarget>();
+    public DbSet<BackupReplica> BackupReplicas => Set<BackupReplica>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +40,32 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.Property(x => x.FilePath).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.Error).HasMaxLength(4000);
             entity.HasIndex(x => new { x.DatabaseEndpointId, x.StartedAtUtc });
+        });
+
+        modelBuilder.Entity<StorageTarget>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.FolderId).HasMaxLength(500);
+            entity.Property(x => x.AccountEmail).HasMaxLength(500);
+            entity.Property(x => x.ProtectedRefreshToken).HasMaxLength(8000);
+            entity.HasIndex(x => x.Name);
+        });
+
+        modelBuilder.Entity<DatabaseStorageTarget>(entity =>
+        {
+            entity.HasKey(x => new { x.DatabaseEndpointId, x.StorageTargetId });
+            entity.HasIndex(x => x.StorageTargetId);
+        });
+
+        modelBuilder.Entity<BackupReplica>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RemoteId).HasMaxLength(1000);
+            entity.Property(x => x.RemotePath).HasMaxLength(2000);
+            entity.Property(x => x.Error).HasMaxLength(4000);
+            entity.HasIndex(x => new { x.BackupRecordId, x.StorageTargetId }).IsUnique();
+            entity.HasIndex(x => new { x.StorageTargetId, x.StartedAtUtc });
         });
     }
 }
