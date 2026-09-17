@@ -33,7 +33,7 @@ public sealed class DatabaseEndpoint
     public string? ProtectedPassword { get; set; }
     public bool TrustServerCertificate { get; set; } = true;
     public bool IsEnabled { get; set; } = true;
-    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class BackupPolicy
@@ -56,8 +56,8 @@ public sealed class BackupRecord
     public BackupStatus Status { get; set; } = BackupStatus.Pending;
     public VerificationStatus VerificationStatus { get; set; } = VerificationStatus.NotRequested;
     public long? SizeBytes { get; set; }
-    public DateTimeOffset StartedAtUtc { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? CompletedAtUtc { get; set; }
+    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAtUtc { get; set; }
     public string? Error { get; set; }
 }
 
