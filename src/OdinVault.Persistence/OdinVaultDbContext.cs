@@ -68,6 +68,7 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.Property(x => x.Error).HasMaxLength(4000);
             entity.HasIndex(x => new { x.BackupRecordId, x.StorageTargetId }).IsUnique();
             entity.HasIndex(x => new { x.StorageTargetId, x.StartedAtUtc });
+            entity.HasIndex(x => new { x.Status, x.NextRetryAtUtc });
         });
     }
 }
