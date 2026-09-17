@@ -10,9 +10,23 @@ using OdinVault.Storage.Local;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var dataDirectory = Path.GetFullPath(builder.Configuration["OdinVault:DataDirectory"] ?? "data");
-var storageDirectory = Path.GetFullPath(builder.Configuration["OdinVault:StorageDirectory"] ?? Path.Combine(dataDirectory, "storage"));
-var replicaDirectory = Path.GetFullPath(builder.Configuration["OdinVault:ReplicaDirectory"] ?? Path.Combine(dataDirectory, "replicas"));
+builder.Host.UseWindowsService(options => options.ServiceName = "OdinVault Agent");
+
+string ResolvePath(string? configured, string fallback)
+{
+    var value = string.IsNullOrWhiteSpace(configured) ? fallback : configured;
+    return Path.IsPathRooted(value)
+        ? Path.GetFullPath(value)
+        : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, value));
+}
+
+var dataDirectory = ResolvePath(
+    builder.Configuration["OdinVault:DataDirectory"],
+    OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OdinVault")
+        : "data");
+var storageDirectory = ResolvePath(builder.Configuration["OdinVault:StorageDirectory"], Path.Combine(dataDirectory, "storage"));
+var replicaDirectory = ResolvePath(builder.Configuration["OdinVault:ReplicaDirectory"], Path.Combine(dataDirectory, "replicas"));
 Directory.CreateDirectory(dataDirectory);
 Directory.CreateDirectory(storageDirectory);
 Directory.CreateDirectory(replicaDirectory);
@@ -30,10 +44,7 @@ builder.Services.AddSingleton(agentApiKey);
 builder.Services.AddSingleton(googleDriveOptions);
 builder.Services.AddSingleton<GoogleDriveOAuthService>();
 builder.Services.AddSingleton<GoogleDrivePairingStateStore>();
-builder.Services.AddHttpClient("OdinVaultReplica", client =>
-{
-    client.Timeout = Timeout.InfiniteTimeSpan;
-});
+builder.Services.AddHttpClient("OdinVaultReplica", client => client.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<OdinVaultDbContext>(options =>
     options.UseSqlite($"Data Source={Path.Combine(dataDirectory, "odinvault.db")}"));
@@ -50,13 +61,15 @@ builder.Services.AddSingleton<BackupExecutionCoordinator>();
 builder.Services.AddScoped<StorageReplicationService>();
 builder.Services.AddScoped<BackupOrchestrator>();
 builder.Services.AddHostedService<BackupScheduler>();
+builder.Services.AddHostedService<ReplicationRetryWorker>();
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<OdinVaultDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await SqliteMigrationBootstrapper.PrepareAsync(db);
+    await db.Database.MigrateAsync();
 }
 
 app.Logger.LogInformation(
@@ -83,13 +96,11 @@ app.MapGet("/api/databases", async (OdinVaultDbContext db, CancellationToken ct)
 {
     var endpoints = await db.DatabaseEndpoints.OrderBy(x => x.Name).ToListAsync(ct);
     var policies = await db.BackupPolicies.ToDictionaryAsync(x => x.DatabaseEndpointId, ct);
-
     var items = endpoints.Select(x =>
     {
         policies.TryGetValue(x.Id, out var policy);
         return ToDatabaseResponse(x, policy);
     });
-
     return Results.Ok(items);
 });
 
@@ -98,16 +109,11 @@ app.MapGet("/api/databases/{id:guid}", async (Guid id, OdinVaultDbContext db, Ca
     var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == id, ct);
     if (endpoint is null)
         return Results.NotFound(new { message = "Database endpoint was not found." });
-
     var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
     return Results.Ok(ToDatabaseResponse(endpoint, policy));
 });
 
-app.MapPost("/api/databases", async (
-    CreateDatabaseRequest request,
-    OdinVaultDbContext db,
-    ISecretProtector protector,
-    CancellationToken ct) =>
+app.MapPost("/api/databases", async (CreateDatabaseRequest request, OdinVaultDbContext db, ISecretProtector protector, CancellationToken ct) =>
 {
     var validationError = ValidateDatabaseRequest(request.Name, request.Host, request.DatabaseName, request.BackupDirectory, request.ScheduleCron);
     if (validationError is not null)
@@ -139,21 +145,14 @@ app.MapPost("/api/databases", async (
     db.DatabaseEndpoints.Add(endpoint);
     db.BackupPolicies.Add(policy);
     await db.SaveChangesAsync(ct);
-
     return Results.Created($"/api/databases/{endpoint.Id}", ToDatabaseResponse(endpoint, policy));
 });
 
-app.MapPut("/api/databases/{id:guid}", async (
-    Guid id,
-    UpdateDatabaseRequest request,
-    OdinVaultDbContext db,
-    ISecretProtector protector,
-    CancellationToken ct) =>
+app.MapPut("/api/databases/{id:guid}", async (Guid id, UpdateDatabaseRequest request, OdinVaultDbContext db, ISecretProtector protector, CancellationToken ct) =>
 {
     var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == id, ct);
     if (endpoint is null)
         return Results.NotFound(new { message = "Database endpoint was not found." });
-
     if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Host) || string.IsNullOrWhiteSpace(request.DatabaseName))
         return Results.BadRequest(new { message = "Name, host and databaseName are required." });
 
@@ -164,7 +163,6 @@ app.MapPut("/api/databases/{id:guid}", async (
     endpoint.Username = request.Username?.Trim() ?? string.Empty;
     endpoint.TrustServerCertificate = request.TrustServerCertificate;
     endpoint.IsEnabled = request.IsEnabled;
-
     if (request.ClearPassword)
         endpoint.ProtectedPassword = null;
     else if (request.Password is not null)
@@ -175,18 +173,12 @@ app.MapPut("/api/databases/{id:guid}", async (
     return Results.Ok(ToDatabaseResponse(endpoint, policy));
 });
 
-app.MapPut("/api/databases/{id:guid}/policy", async (
-    Guid id,
-    UpdateBackupPolicyRequest request,
-    OdinVaultDbContext db,
-    CancellationToken ct) =>
+app.MapPut("/api/databases/{id:guid}/policy", async (Guid id, UpdateBackupPolicyRequest request, OdinVaultDbContext db, CancellationToken ct) =>
 {
     if (!await db.DatabaseEndpoints.AnyAsync(x => x.Id == id, ct))
         return Results.NotFound(new { message = "Database endpoint was not found." });
-
     if (string.IsNullOrWhiteSpace(request.BackupDirectory))
         return Results.BadRequest(new { message = "backupDirectory is required." });
-
     var cronError = ValidateCron(request.ScheduleCron);
     if (cronError is not null)
         return Results.BadRequest(new { message = cronError });
@@ -201,28 +193,20 @@ app.MapPut("/api/databases/{id:guid}/policy", async (
     var normalizedCron = NormalizeCron(request.ScheduleCron);
     if (!string.Equals(policy.ScheduleCron, normalizedCron, StringComparison.Ordinal))
         policy.LastScheduledRunUtc = null;
-
     policy.BackupDirectory = request.BackupDirectory.Trim();
     policy.ScheduleCron = normalizedCron;
     policy.MaxLocalBackups = Math.Clamp(request.MaxLocalBackups, 1, 1000);
     policy.VerifyAfterBackup = request.VerifyAfterBackup;
     policy.IsEnabled = request.IsEnabled;
-
     await db.SaveChangesAsync(ct);
     return Results.Ok(policy);
 });
 
-app.MapDelete("/api/databases/{id:guid}", async (
-    Guid id,
-    bool deleteHistory,
-    bool deleteFiles,
-    OdinVaultDbContext db,
-    CancellationToken ct) =>
+app.MapDelete("/api/databases/{id:guid}", async (Guid id, bool deleteHistory, bool deleteFiles, OdinVaultDbContext db, CancellationToken ct) =>
 {
     var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == id, ct);
     if (endpoint is null)
         return Results.NotFound(new { message = "Database endpoint was not found." });
-
     if (await db.BackupRecords.AnyAsync(x => x.DatabaseEndpointId == id && x.Status == BackupStatus.Running, ct))
         return Results.Conflict(new { message = "A backup is currently running for this database." });
 
@@ -244,7 +228,6 @@ app.MapDelete("/api/databases/{id:guid}", async (
 
     var links = await db.DatabaseStorageTargets.Where(x => x.DatabaseEndpointId == id).ToListAsync(ct);
     db.DatabaseStorageTargets.RemoveRange(links);
-
     var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
     if (policy is not null)
         db.BackupPolicies.Remove(policy);
@@ -257,55 +240,29 @@ app.MapDelete("/api/databases/{id:guid}", async (
     }
     db.DatabaseEndpoints.Remove(endpoint);
     await db.SaveChangesAsync(ct);
-
     return Results.NoContent();
 });
 
 app.MapPost("/api/databases/{id:guid}/test", async (Guid id, BackupOrchestrator orchestrator, CancellationToken ct) =>
 {
-    try
-    {
-        await orchestrator.TestConnectionAsync(id, ct);
-        return Results.Ok(new { success = true });
-    }
-    catch (KeyNotFoundException ex)
-    {
-        return Results.NotFound(new { success = false, message = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { success = false, message = ex.Message });
-    }
+    try { await orchestrator.TestConnectionAsync(id, ct); return Results.Ok(new { success = true }); }
+    catch (KeyNotFoundException ex) { return Results.NotFound(new { success = false, message = ex.Message }); }
+    catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
 });
 
 app.MapPost("/api/databases/{id:guid}/backups", async (Guid id, BackupOrchestrator orchestrator, CancellationToken ct) =>
 {
-    try
-    {
-        var record = await orchestrator.RunNowAsync(id, ct);
-        return Results.Ok(record);
-    }
-    catch (KeyNotFoundException ex)
-    {
-        return Results.NotFound(new { message = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { message = ex.Message });
-    }
+    try { return Results.Ok(await orchestrator.RunNowAsync(id, ct)); }
+    catch (KeyNotFoundException ex) { return Results.NotFound(new { message = ex.Message }); }
+    catch (Exception ex) { return Results.BadRequest(new { message = ex.Message }); }
 });
 
 app.MapGet("/api/databases/{id:guid}/backups", async (Guid id, int? take, OdinVaultDbContext db, CancellationToken ct) =>
 {
     if (!await db.DatabaseEndpoints.AnyAsync(x => x.Id == id, ct))
         return Results.NotFound(new { message = "Database endpoint was not found." });
-
     var limit = Math.Clamp(take ?? 100, 1, 500);
-    var records = await db.BackupRecords
-        .Where(x => x.DatabaseEndpointId == id)
-        .OrderByDescending(x => x.StartedAtUtc)
-        .Take(limit)
-        .ToListAsync(ct);
+    var records = await db.BackupRecords.Where(x => x.DatabaseEndpointId == id).OrderByDescending(x => x.StartedAtUtc).Take(limit).ToListAsync(ct);
     return Results.Ok(records);
 });
 
@@ -316,7 +273,6 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
         return Results.NotFound(new { message = "Backup was not found." });
     if (record.Status != BackupStatus.Succeeded || string.IsNullOrWhiteSpace(record.FilePath) || !File.Exists(record.FilePath))
         return Results.NotFound(new { message = "Backup file is not available on this agent." });
-
     return Results.File(record.FilePath, "application/octet-stream", record.FileName, enableRangeProcessing: true);
 });
 
@@ -360,51 +316,14 @@ static string? ValidateCron(string? cron)
 {
     if (string.IsNullOrWhiteSpace(cron))
         return null;
-    try
-    {
-        CronExpression.Parse(cron.Trim(), CronFormat.Standard);
-        return null;
-    }
-    catch (CronFormatException ex)
-    {
-        return $"Invalid cron expression: {ex.Message}";
-    }
+    try { CronExpression.Parse(cron.Trim(), CronFormat.Standard); return null; }
+    catch (CronFormatException ex) { return $"Invalid cron expression: {ex.Message}"; }
 }
 
 static string? NormalizeCron(string? cron) => string.IsNullOrWhiteSpace(cron) ? null : cron.Trim();
 
-public sealed record CreateDatabaseRequest(
-    string Name,
-    string Host,
-    int? Port,
-    string DatabaseName,
-    string? Username,
-    string? Password,
-    bool TrustServerCertificate,
-    string BackupDirectory,
-    int MaxLocalBackups = 7,
-    bool VerifyAfterBackup = true,
-    string? ScheduleCron = null,
-    bool IsEnabled = true);
+public sealed record CreateDatabaseRequest(string Name, string Host, int? Port, string DatabaseName, string? Username, string? Password, bool TrustServerCertificate, string BackupDirectory, int MaxLocalBackups = 7, bool VerifyAfterBackup = true, string? ScheduleCron = null, bool IsEnabled = true);
+public sealed record UpdateDatabaseRequest(string Name, string Host, int? Port, string DatabaseName, string? Username, string? Password, bool ClearPassword, bool TrustServerCertificate, bool IsEnabled);
+public sealed record UpdateBackupPolicyRequest(string BackupDirectory, int MaxLocalBackups, bool VerifyAfterBackup, string? ScheduleCron, bool IsEnabled);
 
-public sealed record UpdateDatabaseRequest(
-    string Name,
-    string Host,
-    int? Port,
-    string DatabaseName,
-    string? Username,
-    string? Password,
-    bool ClearPassword,
-    bool TrustServerCertificate,
-    bool IsEnabled);
-
-public sealed record UpdateBackupPolicyRequest(
-    string BackupDirectory,
-    int MaxLocalBackups,
-    bool VerifyAfterBackup,
-    string? ScheduleCron,
-    bool IsEnabled);
-
-public partial class Program
-{
-}
+public partial class Program { }
