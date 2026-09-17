@@ -107,6 +107,6 @@ public interface IBackupStorageProvider
 {
     StorageProviderType Type { get; }
     Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken cancellationToken = default);
-    Task<Stream> OpenReadAsync(string remoteId, CancellationToken cancellationToken = default);
+    Task DownloadToAsync(string remoteId, Stream destination, CancellationToken cancellationToken = default);
     Task DeleteAsync(string remoteId, CancellationToken cancellationToken = default);
 }
