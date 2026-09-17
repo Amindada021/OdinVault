@@ -49,6 +49,7 @@ public sealed class BackupOrchestrator(
 
             record.FileName = result.FileName;
             record.FilePath = result.FilePath;
+            record.LocalFileAvailable = true;
             record.SizeBytes = result.SizeBytes;
             record.VerificationStatus = result.VerificationStatus;
             record.Status = BackupStatus.Succeeded;
@@ -96,7 +97,9 @@ public sealed class BackupOrchestrator(
             return;
 
         var oldRecords = await db.BackupRecords
-            .Where(x => x.DatabaseEndpointId == databaseId && x.Status == BackupStatus.Succeeded)
+            .Where(x => x.DatabaseEndpointId == databaseId &&
+                        x.Status == BackupStatus.Succeeded &&
+                        x.LocalFileAvailable)
             .OrderByDescending(x => x.CompletedAtUtc)
             .Skip(maxBackups)
             .ToListAsync(cancellationToken);
@@ -107,11 +110,13 @@ public sealed class BackupOrchestrator(
             {
                 if (!string.IsNullOrWhiteSpace(old.FilePath) && File.Exists(old.FilePath))
                     File.Delete(old.FilePath);
-                db.BackupRecords.Remove(old);
+
+                old.LocalFileAvailable = false;
+                old.LocalFileDeletedAtUtc = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Could not remove expired backup {BackupId}.", old.Id);
+                logger.LogWarning(ex, "Could not remove expired local backup {BackupId}.", old.Id);
             }
         }
 
