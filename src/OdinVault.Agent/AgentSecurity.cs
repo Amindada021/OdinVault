@@ -34,7 +34,8 @@ public sealed class AgentApiKeyMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context, AgentApiKey apiKey)
     {
         if (context.Request.Path.StartsWithSegments("/api/health") ||
-            context.Request.Path.StartsWithSegments("/openapi"))
+            context.Request.Path.StartsWithSegments("/openapi") ||
+            context.Request.Path.StartsWithSegments("/api/storage-targets/google-drive/callback"))
         {
             await next(context);
             return;
