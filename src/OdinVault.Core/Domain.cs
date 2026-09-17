@@ -87,9 +87,16 @@ public sealed class StorageTarget
     public string Name { get; set; } = string.Empty;
     public StorageProviderType Type { get; set; }
     public bool IsEnabled { get; set; } = true;
+
+    // Google Drive settings.
     public string? FolderId { get; set; }
     public string? AccountEmail { get; set; }
     public string? ProtectedRefreshToken { get; set; }
+
+    // OdinVault-to-OdinVault replication settings.
+    public string? BaseUrl { get; set; }
+    public string? ProtectedApiKey { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
