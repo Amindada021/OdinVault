@@ -32,6 +32,7 @@ builder.Services
 builder.Services.AddScoped<ISecretProtector, SecretProtector>();
 builder.Services.AddScoped<IDatabaseBackupProvider, SqlServerBackupProvider>();
 builder.Services.AddSingleton<IBackupStorageProvider>(_ => new LocalBackupStorage(storageDirectory));
+builder.Services.AddSingleton<BackupExecutionCoordinator>();
 builder.Services.AddScoped<BackupOrchestrator>();
 builder.Services.AddHostedService<BackupScheduler>();
 
