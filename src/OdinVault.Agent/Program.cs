@@ -5,6 +5,7 @@ using OdinVault.Agent;
 using OdinVault.Core;
 using OdinVault.Database.SqlServer;
 using OdinVault.Persistence;
+using OdinVault.Storage.GoogleDrive;
 using OdinVault.Storage.Local;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,7 +20,14 @@ var agentApiKey = AgentApiKeyFactory.LoadOrCreate(
     dataDirectory,
     builder.Configuration["OdinVault:ApiKey"] ?? Environment.GetEnvironmentVariable("ODINVAULT_API_KEY"));
 
+var googleDriveOptions = new GoogleDriveOAuthOptions(
+    builder.Configuration["OdinVault:GoogleDrive:ClientId"] ?? Environment.GetEnvironmentVariable("ODINVAULT_GOOGLE_CLIENT_ID") ?? string.Empty,
+    builder.Configuration["OdinVault:GoogleDrive:ClientSecret"] ?? Environment.GetEnvironmentVariable("ODINVAULT_GOOGLE_CLIENT_SECRET") ?? string.Empty);
+
 builder.Services.AddSingleton(agentApiKey);
+builder.Services.AddSingleton(googleDriveOptions);
+builder.Services.AddSingleton<GoogleDriveOAuthService>();
+builder.Services.AddSingleton<GoogleDrivePairingStateStore>();
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<OdinVaultDbContext>(options =>
     options.UseSqlite($"Data Source={Path.Combine(dataDirectory, "odinvault.db")}"));
@@ -33,6 +41,7 @@ builder.Services.AddScoped<ISecretProtector, SecretProtector>();
 builder.Services.AddScoped<IDatabaseBackupProvider, SqlServerBackupProvider>();
 builder.Services.AddSingleton<IBackupStorageProvider>(_ => new LocalBackupStorage(storageDirectory));
 builder.Services.AddSingleton<BackupExecutionCoordinator>();
+builder.Services.AddScoped<StorageReplicationService>();
 builder.Services.AddScoped<BackupOrchestrator>();
 builder.Services.AddHostedService<BackupScheduler>();
 
@@ -45,10 +54,11 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Logger.LogInformation(
-    "OdinVault Agent started. Data: {DataDirectory}; Local storage: {StorageDirectory}; API key file: {ApiKeyPath}",
+    "OdinVault Agent started. Data: {DataDirectory}; Local storage: {StorageDirectory}; API key file: {ApiKeyPath}; Google Drive OAuth configured: {GoogleConfigured}",
     dataDirectory,
     storageDirectory,
-    Path.Combine(dataDirectory, "agent-api-key.txt"));
+    Path.Combine(dataDirectory, "agent-api-key.txt"),
+    !string.IsNullOrWhiteSpace(googleDriveOptions.ClientId) && !string.IsNullOrWhiteSpace(googleDriveOptions.ClientSecret));
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
@@ -225,11 +235,19 @@ app.MapDelete("/api/databases/{id:guid}", async (
         }
     }
 
+    var links = await db.DatabaseStorageTargets.Where(x => x.DatabaseEndpointId == id).ToListAsync(ct);
+    db.DatabaseStorageTargets.RemoveRange(links);
+
     var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
     if (policy is not null)
         db.BackupPolicies.Remove(policy);
     if (deleteHistory)
+    {
+        var recordIds = records.Select(x => x.Id).ToList();
+        var replicas = await db.BackupReplicas.Where(x => recordIds.Contains(x.BackupRecordId)).ToListAsync(ct);
+        db.BackupReplicas.RemoveRange(replicas);
         db.BackupRecords.RemoveRange(records);
+    }
     db.DatabaseEndpoints.Remove(endpoint);
     await db.SaveChangesAsync(ct);
 
@@ -295,6 +313,7 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
     return Results.File(record.FilePath, "application/octet-stream", record.FileName, enableRangeProcessing: true);
 });
 
+app.MapStorageEndpoints();
 app.Run();
 
 static object ToDatabaseResponse(DatabaseEndpoint endpoint, BackupPolicy? policy) => new
