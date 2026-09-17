@@ -9,6 +9,7 @@ public sealed class StorageReplicationService(
     OdinVaultDbContext db,
     ISecretProtector secretProtector,
     GoogleDriveOAuthService googleDriveOAuth,
+    IHttpClientFactory httpClientFactory,
     ILogger<StorageReplicationService> logger)
 {
     public async Task ReplicateAsync(BackupRecord backup, CancellationToken cancellationToken = default)
@@ -32,25 +33,16 @@ public sealed class StorageReplicationService(
             await ReplicateToTargetAsync(backup, target, cancellationToken);
     }
 
-    private async Task ReplicateToTargetAsync(
-        BackupRecord backup,
-        StorageTarget target,
-        CancellationToken cancellationToken)
+    private async Task ReplicateToTargetAsync(BackupRecord backup, StorageTarget target, CancellationToken cancellationToken)
     {
-        var replica = await db.BackupReplicas
-            .FirstOrDefaultAsync(
-                x => x.BackupRecordId == backup.Id && x.StorageTargetId == target.Id,
-                cancellationToken);
+        var replica = await db.BackupReplicas.FirstOrDefaultAsync(
+            x => x.BackupRecordId == backup.Id && x.StorageTargetId == target.Id,
+            cancellationToken);
 
         if (replica?.Status == ReplicaStatus.Succeeded)
             return;
 
-        replica ??= new BackupReplica
-        {
-            BackupRecordId = backup.Id,
-            StorageTargetId = target.Id
-        };
-
+        replica ??= new BackupReplica { BackupRecordId = backup.Id, StorageTargetId = target.Id };
         if (db.Entry(replica).State == EntityState.Detached)
             db.BackupReplicas.Add(replica);
 
@@ -64,11 +56,7 @@ public sealed class StorageReplicationService(
         {
             var provider = CreateProvider(target);
             var result = await provider.UploadAsync(
-                new StorageUploadRequest(
-                    backup.Id,
-                    backup.FileName,
-                    backup.FilePath,
-                    backup.FileName),
+                new StorageUploadRequest(backup.Id, backup.FileName, backup.FilePath, backup.FileName),
                 cancellationToken);
 
             replica.Status = ReplicaStatus.Succeeded;
@@ -84,17 +72,14 @@ public sealed class StorageReplicationService(
             replica.Error = ex.Message;
             replica.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(CancellationToken.None);
-            logger.LogError(
-                ex,
-                "Backup {BackupId} replication to storage target {StorageTargetId} failed.",
-                backup.Id,
-                target.Id);
+            logger.LogError(ex, "Backup {BackupId} replication to storage target {StorageTargetId} failed.", backup.Id, target.Id);
         }
     }
 
     private IBackupStorageProvider CreateProvider(StorageTarget target) => target.Type switch
     {
         StorageProviderType.GoogleDrive => CreateGoogleDriveProvider(target),
+        StorageProviderType.OdinVaultReplica => CreateReplicaProvider(target),
         _ => throw new NotSupportedException($"Storage provider {target.Type} is not configured for managed replication yet.")
     };
 
@@ -104,7 +89,15 @@ public sealed class StorageReplicationService(
             throw new InvalidOperationException($"Google Drive target '{target.Name}' is not connected.");
 
         var refreshToken = secretProtector.Unprotect(target.ProtectedRefreshToken);
-        var drive = googleDriveOAuth.CreateDriveService(refreshToken);
-        return new GoogleDriveBackupStorage(drive, target.FolderId);
+        return new GoogleDriveBackupStorage(googleDriveOAuth.CreateDriveService(refreshToken), target.FolderId);
+    }
+
+    private IBackupStorageProvider CreateReplicaProvider(StorageTarget target)
+    {
+        if (string.IsNullOrWhiteSpace(target.BaseUrl) || string.IsNullOrWhiteSpace(target.ProtectedApiKey))
+            throw new InvalidOperationException($"Replica target '{target.Name}' is not configured.");
+
+        var apiKey = secretProtector.Unprotect(target.ProtectedApiKey);
+        return new OdinVaultReplicaStorage(httpClientFactory.CreateClient("OdinVaultReplica"), target.BaseUrl, apiKey);
     }
 }
