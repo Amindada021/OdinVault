@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/OdinVault.Core/OdinVault.Core.csproj" />
+  <Project Path="src/OdinVault.Persistence/OdinVault.Persistence.csproj" />
+  <Project Path="src/OdinVault.Database.SqlServer/OdinVault.Database.SqlServer.csproj" />
+  <Project Path="src/OdinVault.Storage.Local/OdinVault.Storage.Local.csproj" />
+  <Project Path="src/OdinVault.Agent/OdinVault.Agent.csproj" />
+</Solution>
