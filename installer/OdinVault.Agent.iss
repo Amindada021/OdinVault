@@ -28,14 +28,14 @@ Name: "{commonappdata}\OdinVault\storage"
 Name: "{commonappdata}\OdinVault\replicas"
 
 [Run]
-Filename: "{sys}\sc.exe"; Parameters: "create OdinVaultAgent binPath= \"{app}\{#MyAppExeName}\" start= auto DisplayName= \"OdinVault Agent\""; Flags: runhidden waituntilterminated
-Filename: "{sys}\sc.exe"; Parameters: "description OdinVaultAgent \"OdinVault database backup and replication agent\""; Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "create OdinVaultAgent binPath= ""{app}\{#MyAppExeName}"" start= auto DisplayName= ""OdinVault Agent"""; Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "description OdinVaultAgent ""OdinVault database backup and replication agent"""; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "failure OdinVaultAgent reset= 86400 actions= restart/60000/restart/300000/restart/900000"; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "failureflag OdinVaultAgent 1"; Flags: runhidden waituntilterminated
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=\"OdinVault Agent\" dir=in action=allow protocol=TCP localport=5188"; Flags: runhidden waituntilterminated
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""OdinVault Agent"" dir=in action=allow protocol=TCP localport=5188"; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "start OdinVaultAgent"; Flags: runhidden waituntilterminated
 
 [UninstallRun]
 Filename: "{sys}\sc.exe"; Parameters: "stop OdinVaultAgent"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\sc.exe"; Parameters: "delete OdinVaultAgent"; Flags: runhidden waituntilterminated skipifdoesntexist
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=\"OdinVault Agent\""; Flags: runhidden waituntilterminated
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""OdinVault Agent"""; Flags: runhidden waituntilterminated
