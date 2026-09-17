@@ -49,6 +49,8 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.Property(x => x.FolderId).HasMaxLength(500);
             entity.Property(x => x.AccountEmail).HasMaxLength(500);
             entity.Property(x => x.ProtectedRefreshToken).HasMaxLength(8000);
+            entity.Property(x => x.BaseUrl).HasMaxLength(2000);
+            entity.Property(x => x.ProtectedApiKey).HasMaxLength(8000);
             entity.HasIndex(x => x.Name);
         });
 
