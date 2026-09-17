@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\OdinVault.Core\OdinVault.Core.csproj" />
+  </ItemGroup>
+</Project>
