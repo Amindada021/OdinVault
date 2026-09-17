@@ -9,6 +9,7 @@ public sealed class BackupOrchestrator(
     IEnumerable<IDatabaseBackupProvider> providers,
     ISecretProtector secretProtector,
     BackupExecutionCoordinator executionCoordinator,
+    StorageReplicationService replicationService,
     ILogger<BackupOrchestrator> logger)
 {
     public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default)
@@ -54,6 +55,7 @@ public sealed class BackupOrchestrator(
             record.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
+            await replicationService.ReplicateAsync(record, cancellationToken);
             await CleanupRetentionAsync(endpoint.Id, policy.MaxLocalBackups, cancellationToken);
             return record;
         }
