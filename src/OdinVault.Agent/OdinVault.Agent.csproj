@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\OdinVault.Core\OdinVault.Core.csproj" />
+    <ProjectReference Include="..\OdinVault.Persistence\OdinVault.Persistence.csproj" />
+    <ProjectReference Include="..\OdinVault.Database.SqlServer\OdinVault.Database.SqlServer.csproj" />
+    <ProjectReference Include="..\OdinVault.Storage.Local\OdinVault.Storage.Local.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+  </ItemGroup>
+</Project>
