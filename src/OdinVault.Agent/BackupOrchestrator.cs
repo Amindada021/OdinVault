@@ -28,7 +28,7 @@ public sealed class BackupOrchestrator(
             DatabaseEndpointId = endpoint.Id,
             Status = BackupStatus.Running,
             VerificationStatus = policy.VerifyAfterBackup ? VerificationStatus.Pending : VerificationStatus.NotRequested,
-            StartedAtUtc = DateTimeOffset.UtcNow
+            StartedAtUtc = DateTime.UtcNow
         };
 
         db.BackupRecords.Add(record);
@@ -46,7 +46,7 @@ public sealed class BackupOrchestrator(
             record.SizeBytes = result.SizeBytes;
             record.VerificationStatus = result.VerificationStatus;
             record.Status = BackupStatus.Succeeded;
-            record.CompletedAtUtc = DateTimeOffset.UtcNow;
+            record.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
             await CleanupRetentionAsync(endpoint.Id, policy.MaxLocalBackups, cancellationToken);
@@ -59,7 +59,7 @@ public sealed class BackupOrchestrator(
             record.VerificationStatus = record.VerificationStatus == VerificationStatus.Pending
                 ? VerificationStatus.Failed
                 : record.VerificationStatus;
-            record.CompletedAtUtc = DateTimeOffset.UtcNow;
+            record.CompletedAtUtc = DateTime.UtcNow;
             record.Error = ex.Message;
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
