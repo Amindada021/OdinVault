@@ -2,17 +2,22 @@ using OdinVault.Core;
 
 namespace OdinVault.Storage.Local;
 
-public sealed class LocalBackupStorage(string rootDirectory) : IBackupStorage
+public sealed class LocalBackupStorage(string rootDirectory) : IBackupStorageProvider
 {
-    public string Name => "local";
+    public StorageProviderType Type => StorageProviderType.Local;
 
-    public async Task StoreAsync(string sourceFilePath, string destinationName, CancellationToken cancellationToken = default)
+    public async Task<StorageUploadResult> UploadAsync(
+        StorageUploadRequest request,
+        CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(rootDirectory);
+        var destinationName = string.IsNullOrWhiteSpace(request.DestinationPath)
+            ? request.FileName
+            : Path.GetFileName(request.DestinationPath);
         var destinationPath = Resolve(destinationName);
 
         await using var source = new FileStream(
-            sourceFilePath,
+            request.LocalPath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
@@ -28,12 +33,19 @@ public sealed class LocalBackupStorage(string rootDirectory) : IBackupStorage
             FileOptions.Asynchronous | FileOptions.SequentialScan);
 
         await source.CopyToAsync(destination, 1024 * 1024, cancellationToken);
+        await destination.FlushAsync(cancellationToken);
+
+        return new StorageUploadResult(
+            "local",
+            destinationName,
+            destinationPath,
+            new FileInfo(destinationPath).Length);
     }
 
-    public Task<Stream> OpenReadAsync(string name, CancellationToken cancellationToken = default)
+    public Task<Stream> OpenReadAsync(string remoteId, CancellationToken cancellationToken = default)
     {
         Stream stream = new FileStream(
-            Resolve(name),
+            Resolve(remoteId),
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
@@ -42,24 +54,12 @@ public sealed class LocalBackupStorage(string rootDirectory) : IBackupStorage
         return Task.FromResult(stream);
     }
 
-    public Task DeleteAsync(string name, CancellationToken cancellationToken = default)
+    public Task DeleteAsync(string remoteId, CancellationToken cancellationToken = default)
     {
-        var path = Resolve(name);
-        if (File.Exists(path)) File.Delete(path);
+        var path = Resolve(remoteId);
+        if (File.Exists(path))
+            File.Delete(path);
         return Task.CompletedTask;
-    }
-
-    public Task<IReadOnlyList<string>> ListAsync(CancellationToken cancellationToken = default)
-    {
-        Directory.CreateDirectory(rootDirectory);
-        IReadOnlyList<string> files = Directory
-            .EnumerateFiles(rootDirectory, "*", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Cast<string>()
-            .OrderByDescending(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return Task.FromResult(files);
     }
 
     private string Resolve(string name)
