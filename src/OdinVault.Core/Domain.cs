@@ -30,6 +30,14 @@ public enum StorageProviderType
     OdinVaultReplica = 5
 }
 
+public enum ReplicaStatus
+{
+    Pending = 0,
+    Uploading = 1,
+    Succeeded = 2,
+    Failed = 3
+}
+
 public sealed class DatabaseEndpoint
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -69,6 +77,39 @@ public sealed class BackupRecord
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }
     public string? Error { get; set; }
+}
+
+public sealed class StorageTarget
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public StorageProviderType Type { get; set; }
+    public bool IsEnabled { get; set; } = true;
+    public string? FolderId { get; set; }
+    public string? AccountEmail { get; set; }
+    public string? ProtectedRefreshToken { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class DatabaseStorageTarget
+{
+    public Guid DatabaseEndpointId { get; set; }
+    public Guid StorageTargetId { get; set; }
+    public bool IsEnabled { get; set; } = true;
+}
+
+public sealed class BackupReplica
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid BackupRecordId { get; set; }
+    public Guid StorageTargetId { get; set; }
+    public ReplicaStatus Status { get; set; } = ReplicaStatus.Pending;
+    public string? RemoteId { get; set; }
+    public string? RemotePath { get; set; }
+    public long? SizeBytes { get; set; }
+    public string? Error { get; set; }
+    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAtUtc { get; set; }
 }
 
 public sealed record DatabaseConnectionInfo(
