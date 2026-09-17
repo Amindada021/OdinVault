@@ -21,7 +21,12 @@ public static class StorageEndpoints
                     x.IsEnabled,
                     x.FolderId,
                     x.AccountEmail,
-                    isConnected = x.ProtectedRefreshToken != null,
+                    x.BaseUrl,
+                    isConnected = x.Type == StorageProviderType.GoogleDrive
+                        ? x.ProtectedRefreshToken != null
+                        : x.Type == StorageProviderType.OdinVaultReplica
+                            ? x.ProtectedApiKey != null
+                            : true,
                     x.CreatedAtUtc
                 })
                 .ToListAsync(ct);
@@ -49,6 +54,68 @@ public static class StorageEndpoints
             });
         });
 
+        app.MapGet("/api/storage-targets/google-drive/pair/status/{state}", (
+            string state,
+            GoogleDrivePairingStateStore stateStore) =>
+        {
+            var status = stateStore.GetStatus(state);
+            return status is null
+                ? Results.NotFound(new { message = "OAuth pairing state was not found or expired." })
+                : Results.Ok(status);
+        });
+
+        app.MapGet("/api/storage-targets/google-drive/callback", async (
+            string? code,
+            string? state,
+            string? error,
+            GoogleDrivePairingStateStore stateStore,
+            GoogleDriveOAuthService oauth,
+            ISecretProtector protector,
+            OdinVaultDbContext db,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(state))
+                return Results.Text("OdinVault Google Drive pairing failed: missing state.", "text/plain");
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                stateStore.MarkFailed(state, error);
+                return Results.Text($"OdinVault Google Drive pairing failed: {error}. You can return to the app.", "text/plain");
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || !stateStore.TryConsume(state, out var pairing))
+            {
+                stateStore.MarkFailed(state, "OAuth state is invalid, expired, or authorization code is missing.");
+                return Results.Text("OdinVault Google Drive pairing failed. The request is invalid or expired.", "text/plain");
+            }
+
+            try
+            {
+                var token = await oauth.ExchangeCodeAsync(code, pairing.RedirectUri, ct);
+                if (string.IsNullOrWhiteSpace(token.RefreshToken))
+                    throw new InvalidOperationException("Google did not return a refresh token. Revoke OdinVault access and pair again.");
+
+                var target = new StorageTarget
+                {
+                    Name = pairing.TargetName,
+                    Type = StorageProviderType.GoogleDrive,
+                    FolderId = pairing.FolderId,
+                    ProtectedRefreshToken = protector.Protect(token.RefreshToken),
+                    IsEnabled = true
+                };
+
+                db.StorageTargets.Add(target);
+                await db.SaveChangesAsync(ct);
+                stateStore.MarkSucceeded(state, target.Id);
+                return Results.Text("Google Drive connected successfully to OdinVault. You can return to the app.", "text/plain");
+            }
+            catch (Exception ex)
+            {
+                stateStore.MarkFailed(state, ex.Message);
+                return Results.Text($"OdinVault Google Drive pairing failed: {ex.Message}", "text/plain");
+            }
+        });
+
         app.MapPost("/api/storage-targets/google-drive/pair/complete", async (
             CompleteGoogleDrivePairingRequest request,
             GoogleDrivePairingStateStore stateStore,
@@ -63,6 +130,9 @@ public static class StorageEndpoints
                 return Results.BadRequest(new { message = "OAuth pairing state is invalid or expired." });
 
             var token = await oauth.ExchangeCodeAsync(request.Code, pairing.RedirectUri, ct);
+            if (string.IsNullOrWhiteSpace(token.RefreshToken))
+                return Results.BadRequest(new { message = "Google did not return a refresh token." });
+
             var target = new StorageTarget
             {
                 Name = pairing.TargetName,
@@ -75,6 +145,7 @@ public static class StorageEndpoints
 
             db.StorageTargets.Add(target);
             await db.SaveChangesAsync(ct);
+            stateStore.MarkSucceeded(request.State, target.Id);
             return Results.Created($"/api/storage-targets/{target.Id}", new
             {
                 target.Id,
@@ -102,7 +173,7 @@ public static class StorageEndpoints
             target.FolderId = string.IsNullOrWhiteSpace(request.FolderId) ? null : request.FolderId.Trim();
             target.IsEnabled = request.IsEnabled;
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { target.Id, target.Name, target.Type, target.FolderId, target.AccountEmail, target.IsEnabled });
+            return Results.Ok(new { target.Id, target.Name, target.Type, target.FolderId, target.AccountEmail, target.BaseUrl, target.IsEnabled });
         });
 
         app.MapDelete("/api/storage-targets/{id:guid}", async (
