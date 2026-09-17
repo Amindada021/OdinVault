@@ -12,6 +12,15 @@ public sealed class StorageReplicationService(
     IHttpClientFactory httpClientFactory,
     ILogger<StorageReplicationService> logger)
 {
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(5),
+        TimeSpan.FromMinutes(15),
+        TimeSpan.FromHours(1),
+        TimeSpan.FromHours(6)
+    ];
+
     public async Task ReplicateAsync(BackupRecord backup, CancellationToken cancellationToken = default)
     {
         if (backup.Status != BackupStatus.Succeeded || string.IsNullOrWhiteSpace(backup.FilePath) || !File.Exists(backup.FilePath))
@@ -33,6 +42,26 @@ public sealed class StorageReplicationService(
             await ReplicateToTargetAsync(backup, target, cancellationToken);
     }
 
+    public async Task RetryDueAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var due = await db.BackupReplicas
+            .Where(x => x.Status == ReplicaStatus.Failed && x.NextRetryAtUtc != null && x.NextRetryAtUtc <= now)
+            .OrderBy(x => x.NextRetryAtUtc)
+            .Take(20)
+            .ToListAsync(cancellationToken);
+
+        foreach (var replica in due)
+        {
+            var backup = await db.BackupRecords.FirstOrDefaultAsync(x => x.Id == replica.BackupRecordId, cancellationToken);
+            var target = await db.StorageTargets.FirstOrDefaultAsync(x => x.Id == replica.StorageTargetId && x.IsEnabled, cancellationToken);
+            if (backup is null || target is null)
+                continue;
+
+            await ReplicateToTargetAsync(backup, target, cancellationToken);
+        }
+    }
+
     private async Task ReplicateToTargetAsync(BackupRecord backup, StorageTarget target, CancellationToken cancellationToken)
     {
         var replica = await db.BackupReplicas.FirstOrDefaultAsync(
@@ -50,6 +79,7 @@ public sealed class StorageReplicationService(
         replica.StartedAtUtc = DateTime.UtcNow;
         replica.CompletedAtUtc = null;
         replica.Error = null;
+        replica.NextRetryAtUtc = null;
         await db.SaveChangesAsync(cancellationToken);
 
         try
@@ -64,6 +94,7 @@ public sealed class StorageReplicationService(
             replica.RemotePath = result.RemotePath;
             replica.SizeBytes = result.SizeBytes;
             replica.CompletedAtUtc = DateTime.UtcNow;
+            replica.NextRetryAtUtc = null;
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -71,8 +102,11 @@ public sealed class StorageReplicationService(
             replica.Status = ReplicaStatus.Failed;
             replica.Error = ex.Message;
             replica.CompletedAtUtc = DateTime.UtcNow;
+            replica.RetryCount++;
+            var delay = RetryDelays[Math.Min(replica.RetryCount - 1, RetryDelays.Length - 1)];
+            replica.NextRetryAtUtc = DateTime.UtcNow.Add(delay);
             await db.SaveChangesAsync(CancellationToken.None);
-            logger.LogError(ex, "Backup {BackupId} replication to storage target {StorageTargetId} failed.", backup.Id, target.Id);
+            logger.LogError(ex, "Backup {BackupId} replication to storage target {StorageTargetId} failed. Retry {RetryCount} at {NextRetryAtUtc}.", backup.Id, target.Id, replica.RetryCount, replica.NextRetryAtUtc);
         }
     }
 
