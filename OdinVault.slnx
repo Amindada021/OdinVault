@@ -3,5 +3,6 @@
   <Project Path="src/OdinVault.Persistence/OdinVault.Persistence.csproj" />
   <Project Path="src/OdinVault.Database.SqlServer/OdinVault.Database.SqlServer.csproj" />
   <Project Path="src/OdinVault.Storage.Local/OdinVault.Storage.Local.csproj" />
+  <Project Path="src/OdinVault.Storage.GoogleDrive/OdinVault.Storage.GoogleDrive.csproj" />
   <Project Path="src/OdinVault.Agent/OdinVault.Agent.csproj" />
 </Solution>
