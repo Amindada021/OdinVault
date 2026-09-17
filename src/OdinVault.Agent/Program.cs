@@ -11,6 +11,11 @@ var dataDirectory = Path.GetFullPath(builder.Configuration["OdinVault:DataDirect
 Directory.CreateDirectory(dataDirectory);
 Directory.CreateDirectory(Path.Combine(dataDirectory, "keys"));
 
+var agentApiKey = AgentApiKeyFactory.LoadOrCreate(
+    dataDirectory,
+    builder.Configuration["OdinVault:ApiKey"] ?? Environment.GetEnvironmentVariable("ODINVAULT_API_KEY"));
+
+builder.Services.AddSingleton(agentApiKey);
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<OdinVaultDbContext>(options =>
     options.UseSqlite($"Data Source={Path.Combine(dataDirectory, "odinvault.db")}"));
@@ -32,8 +37,14 @@ using (var scope = app.Services.CreateScope())
     await db.Database.EnsureCreatedAsync();
 }
 
+app.Logger.LogInformation(
+    "OdinVault Agent started. API key file: {ApiKeyPath}",
+    Path.Combine(dataDirectory, "agent-api-key.txt"));
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
+
+app.UseMiddleware<AgentApiKeyMiddleware>();
 
 app.MapGet("/api/health", () => Results.Ok(new
 {
