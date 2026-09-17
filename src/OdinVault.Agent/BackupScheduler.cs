@@ -68,8 +68,7 @@ public sealed class BackupScheduler(
         var db = scope.ServiceProvider.GetRequiredService<OdinVaultDbContext>();
         var orchestrator = scope.ServiceProvider.GetRequiredService<BackupOrchestrator>();
 
-        var policy = await db.BackupPolicies
-            .FirstOrDefaultAsync(x => x.Id == policyId, cancellationToken);
+        var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.Id == policyId, cancellationToken);
         if (policy is null || !policy.IsEnabled || string.IsNullOrWhiteSpace(policy.ScheduleCron))
             return;
 
@@ -89,9 +88,10 @@ public sealed class BackupScheduler(
             return;
         }
 
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
         var searchFrom = now.AddDays(-7);
-        var previous = expression.GetOccurrences(searchFrom, now, TimeZoneInfo.Utc, fromInclusive: true, toInclusive: true)
+        var previous = expression
+            .GetOccurrences(searchFrom, now, TimeZoneInfo.Utc, fromInclusive: true, toInclusive: true)
             .LastOrDefault();
 
         if (previous == default)
@@ -101,7 +101,7 @@ public sealed class BackupScheduler(
         if (policy.LastScheduledRunUtc.HasValue && policy.LastScheduledRunUtc.Value >= occurrenceUtc)
             return;
 
-        // Mark the cron slot before running. This prevents duplicate execution if the backup itself fails.
+        // Persist the cron slot before running so a failed backup is not duplicated every 30 seconds.
         policy.LastScheduledRunUtc = occurrenceUtc;
         await db.SaveChangesAsync(cancellationToken);
 
