@@ -6,7 +6,6 @@
     <ProjectReference Include="..\OdinVault.Storage.Local\OdinVault.Storage.Local.csproj" />
     <ProjectReference Include="..\OdinVault.Storage.GoogleDrive\OdinVault.Storage.GoogleDrive.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Cronos" />
   </ItemGroup>
 </Project>
