@@ -12,8 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 var dataDirectory = Path.GetFullPath(builder.Configuration["OdinVault:DataDirectory"] ?? "data");
 var storageDirectory = Path.GetFullPath(builder.Configuration["OdinVault:StorageDirectory"] ?? Path.Combine(dataDirectory, "storage"));
+var replicaDirectory = Path.GetFullPath(builder.Configuration["OdinVault:ReplicaDirectory"] ?? Path.Combine(dataDirectory, "replicas"));
 Directory.CreateDirectory(dataDirectory);
 Directory.CreateDirectory(storageDirectory);
+Directory.CreateDirectory(replicaDirectory);
 Directory.CreateDirectory(Path.Combine(dataDirectory, "keys"));
 
 var agentApiKey = AgentApiKeyFactory.LoadOrCreate(
@@ -28,6 +30,10 @@ builder.Services.AddSingleton(agentApiKey);
 builder.Services.AddSingleton(googleDriveOptions);
 builder.Services.AddSingleton<GoogleDriveOAuthService>();
 builder.Services.AddSingleton<GoogleDrivePairingStateStore>();
+builder.Services.AddHttpClient("OdinVaultReplica", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<OdinVaultDbContext>(options =>
     options.UseSqlite($"Data Source={Path.Combine(dataDirectory, "odinvault.db")}"));
@@ -54,9 +60,10 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Logger.LogInformation(
-    "OdinVault Agent started. Data: {DataDirectory}; Local storage: {StorageDirectory}; API key file: {ApiKeyPath}; Google Drive OAuth configured: {GoogleConfigured}",
+    "OdinVault Agent started. Data: {DataDirectory}; Local storage: {StorageDirectory}; Replica storage: {ReplicaDirectory}; API key file: {ApiKeyPath}; Google Drive OAuth configured: {GoogleConfigured}",
     dataDirectory,
     storageDirectory,
+    replicaDirectory,
     Path.Combine(dataDirectory, "agent-api-key.txt"),
     !string.IsNullOrWhiteSpace(googleDriveOptions.ClientId) && !string.IsNullOrWhiteSpace(googleDriveOptions.ClientSecret));
 
@@ -314,6 +321,8 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
 });
 
 app.MapStorageEndpoints();
+app.MapReplicaTargetEndpoints();
+app.MapReplicaEndpoints(replicaDirectory);
 app.Run();
 
 static object ToDatabaseResponse(DatabaseEndpoint endpoint, BackupPolicy? policy) => new
