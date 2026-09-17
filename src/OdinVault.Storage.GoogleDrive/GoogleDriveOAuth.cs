@@ -26,9 +26,10 @@ public sealed class GoogleDriveOAuthService(GoogleDriveOAuthOptions options)
         var request = flow.CreateAuthorizationCodeRequest(redirectUri);
         request.Scope = string.Join(' ', Scopes);
         request.State = state;
-        request.AccessType = "offline";
-        request.Prompt = "consent";
-        return request.Build().AbsoluteUri;
+
+        var url = request.Build().AbsoluteUri;
+        var separator = url.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{url}{separator}access_type=offline&prompt=consent";
     }
 
     public async Task<GoogleDriveTokenResult> ExchangeCodeAsync(
