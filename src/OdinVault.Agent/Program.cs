@@ -181,4 +181,6 @@ public sealed record CreateDatabaseRequest(
     bool VerifyAfterBackup = true,
     string? ScheduleCron = null);
 
-public partial class Program;
+public partial class Program
+{
+}
