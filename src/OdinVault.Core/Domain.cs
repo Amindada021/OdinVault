@@ -88,12 +88,10 @@ public sealed class StorageTarget
     public StorageProviderType Type { get; set; }
     public bool IsEnabled { get; set; } = true;
 
-    // Google Drive settings.
     public string? FolderId { get; set; }
     public string? AccountEmail { get; set; }
     public string? ProtectedRefreshToken { get; set; }
 
-    // OdinVault-to-OdinVault replication settings.
     public string? BaseUrl { get; set; }
     public string? ProtectedApiKey { get; set; }
 
@@ -117,6 +115,8 @@ public sealed class BackupReplica
     public string? RemotePath { get; set; }
     public long? SizeBytes { get; set; }
     public string? Error { get; set; }
+    public int RetryCount { get; set; }
+    public DateTime? NextRetryAtUtc { get; set; }
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }
 }
