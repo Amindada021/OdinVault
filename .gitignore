@@ -1,0 +1,37 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Local OdinVault data
+*.db
+*.db-shm
+*.db-wal
+*.bak
+*.trn
+*.dif
+backups/
+data/
+keys/
+
+# Secrets/config overrides
+appsettings.Local.json
+appsettings.Production.json
+.env
+.env.*
+!.env.example
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.pub-cache/
+
+# OS
+.DS_Store
+Thumbs.db
