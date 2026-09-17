@@ -8,10 +8,15 @@ public sealed class BackupOrchestrator(
     OdinVaultDbContext db,
     IEnumerable<IDatabaseBackupProvider> providers,
     ISecretProtector secretProtector,
+    BackupExecutionCoordinator executionCoordinator,
     ILogger<BackupOrchestrator> logger)
 {
     public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default)
     {
+        await using var lease = await executionCoordinator.TryAcquireAsync(databaseId, cancellationToken);
+        if (lease is null)
+            throw new InvalidOperationException("A backup is already running for this database.");
+
         var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == databaseId, cancellationToken)
             ?? throw new KeyNotFoundException("Database endpoint was not found.");
         var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == databaseId, cancellationToken)
@@ -85,7 +90,8 @@ public sealed class BackupOrchestrator(
 
     private async Task CleanupRetentionAsync(Guid databaseId, int maxBackups, CancellationToken cancellationToken)
     {
-        if (maxBackups < 1) return;
+        if (maxBackups < 1)
+            return;
 
         var oldRecords = await db.BackupRecords
             .Where(x => x.DatabaseEndpointId == databaseId && x.Status == BackupStatus.Succeeded)
