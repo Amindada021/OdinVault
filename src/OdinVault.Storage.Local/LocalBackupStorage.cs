@@ -42,16 +42,20 @@ public sealed class LocalBackupStorage(string rootDirectory) : IBackupStoragePro
             new FileInfo(destinationPath).Length);
     }
 
-    public Task<Stream> OpenReadAsync(string remoteId, CancellationToken cancellationToken = default)
+    public async Task DownloadToAsync(
+        string remoteId,
+        Stream destination,
+        CancellationToken cancellationToken = default)
     {
-        Stream stream = new FileStream(
+        await using var source = new FileStream(
             Resolve(remoteId),
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
             1024 * 1024,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return Task.FromResult(stream);
+
+        await source.CopyToAsync(destination, 1024 * 1024, cancellationToken);
     }
 
     public Task DeleteAsync(string remoteId, CancellationToken cancellationToken = default)
