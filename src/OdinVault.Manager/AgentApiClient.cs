@@ -37,6 +37,18 @@ internal sealed class AgentApiClient : IDisposable
                ?? [];
     }
 
+    public async Task<IReadOnlyList<DiscoveredDatabaseResponse>> DiscoverDatabasesAsync(
+        DiscoverSqlServerRequest body,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Post, "api/sql-server/discover");
+        request.Content = JsonContent.Create(body, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<List<DiscoveredDatabaseResponse>>(JsonOptions, cancellationToken)
+               ?? [];
+    }
+
     public async Task TestDatabaseAsync(Guid databaseId, CancellationToken cancellationToken = default)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Post, $"api/databases/{databaseId}/test");
@@ -135,6 +147,22 @@ internal sealed record BackupPolicyResponse(
     bool VerifyAfterBackup,
     bool IsEnabled,
     DateTime? LastScheduledRunUtc);
+
+internal sealed record DiscoverSqlServerRequest(
+    string Host,
+    int? Port,
+    string? Username,
+    string? Password,
+    bool TrustServerCertificate);
+
+internal sealed record DiscoveredDatabaseResponse(
+    string Name,
+    int DatabaseId,
+    string State,
+    string RecoveryModel,
+    bool IsSystem,
+    bool IsRegistered,
+    bool CanBackup);
 
 internal sealed record CreateDatabaseRequest(
     string Name,
