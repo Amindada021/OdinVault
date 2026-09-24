@@ -5,4 +5,5 @@
   <Project Path="src/OdinVault.Storage.Local/OdinVault.Storage.Local.csproj" />
   <Project Path="src/OdinVault.Storage.GoogleDrive/OdinVault.Storage.GoogleDrive.csproj" />
   <Project Path="src/OdinVault.Agent/OdinVault.Agent.csproj" />
+  <Project Path="src/OdinVault.Manager/OdinVault.Manager.csproj" />
 </Solution>
