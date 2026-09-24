@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OdinVault.Manager;
 
@@ -46,7 +47,9 @@ internal sealed class GitHubUpdateService : IDisposable
             throw new InvalidOperationException($"نسخه Release نامعتبر است: {release.TagName}");
 
         var installer = release.Assets?
-            .FirstOrDefault(x => string.Equals(x.Name, "OdinVault-Setup.exe", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(x =>
+                x.Name.StartsWith("OdinVault-Setup-v", StringComparison.OrdinalIgnoreCase) &&
+                x.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
 
         var currentVersion = GetCurrentVersion();
 
@@ -66,7 +69,7 @@ internal sealed class GitHubUpdateService : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(update.InstallerDownloadUrl))
-            throw new InvalidOperationException("فایل OdinVault-Setup.exe در Release پیدا نشد.");
+            throw new InvalidOperationException("فایل نصب OdinVault در Release پیدا نشد.");
 
         var directory = Path.Combine(Path.GetTempPath(), "OdinVault", "Updates");
         Directory.CreateDirectory(directory);
@@ -144,14 +147,14 @@ internal sealed class GitHubUpdateService : IDisposable
     public void Dispose() => _httpClient.Dispose();
 
     private sealed record GitHubRelease(
-        string TagName,
-        string? Name,
-        string? HtmlUrl,
-        List<GitHubReleaseAsset>? Assets);
+        [property: JsonPropertyName("tag_name")] string TagName,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("html_url")] string? HtmlUrl,
+        [property: JsonPropertyName("assets")] List<GitHubReleaseAsset>? Assets);
 
     private sealed record GitHubReleaseAsset(
-        string Name,
-        string BrowserDownloadUrl);
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("browser_download_url")] string BrowserDownloadUrl);
 }
 
 internal sealed record UpdateCheckResult(
