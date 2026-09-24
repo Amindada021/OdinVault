@@ -55,6 +55,7 @@ builder.Services
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
 
 builder.Services.AddScoped<ISecretProtector, SecretProtector>();
+builder.Services.AddScoped<SqlServerDiscoveryService>();
 builder.Services.AddScoped<IDatabaseBackupProvider, SqlServerBackupProvider>();
 builder.Services.AddSingleton<IBackupStorageProvider>(_ => new LocalBackupStorage(storageDirectory));
 builder.Services.AddSingleton<BackupExecutionCoordinator>();
@@ -91,6 +92,50 @@ app.MapGet("/api/health", () => Results.Ok(new
     status = "healthy",
     utc = DateTime.UtcNow
 }));
+
+app.MapPost("/api/sql-server/discover", async (
+    DiscoverSqlServerRequest request,
+    SqlServerDiscoveryService discovery,
+    OdinVaultDbContext db,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Host))
+        return Results.BadRequest(new { message = "host is required." });
+
+    try
+    {
+        var discovered = await discovery.DiscoverAsync(
+            request.Host,
+            request.Port,
+            request.Username,
+            request.Password,
+            request.TrustServerCertificate,
+            ct);
+
+        var registered = await db.DatabaseEndpoints
+            .Where(x => x.Engine == DatabaseEngine.SqlServer && x.Host == request.Host.Trim())
+            .Select(x => x.DatabaseName)
+            .ToListAsync(ct);
+
+        var registeredNames = registered.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var result = discovered.Select(x => new
+        {
+            x.Name,
+            x.DatabaseId,
+            x.State,
+            x.RecoveryModel,
+            x.IsSystem,
+            isRegistered = registeredNames.Contains(x.Name),
+            canBackup = !x.IsSystem && string.Equals(x.State, "ONLINE", StringComparison.OrdinalIgnoreCase)
+        });
+
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { message = ex.Message });
+    }
+});
 
 app.MapGet("/api/databases", async (OdinVaultDbContext db, CancellationToken ct) =>
 {
@@ -322,6 +367,7 @@ static string? ValidateCron(string? cron)
 
 static string? NormalizeCron(string? cron) => string.IsNullOrWhiteSpace(cron) ? null : cron.Trim();
 
+public sealed record DiscoverSqlServerRequest(string Host, int? Port, string? Username, string? Password, bool TrustServerCertificate = true);
 public sealed record CreateDatabaseRequest(string Name, string Host, int? Port, string DatabaseName, string? Username, string? Password, bool TrustServerCertificate, string BackupDirectory, int MaxLocalBackups = 7, bool VerifyAfterBackup = true, string? ScheduleCron = null, bool IsEnabled = true);
 public sealed record UpdateDatabaseRequest(string Name, string Host, int? Port, string DatabaseName, string? Username, string? Password, bool ClearPassword, bool TrustServerCertificate, bool IsEnabled);
 public sealed record UpdateBackupPolicyRequest(string BackupDirectory, int MaxLocalBackups, bool VerifyAfterBackup, string? ScheduleCron, bool IsEnabled);
