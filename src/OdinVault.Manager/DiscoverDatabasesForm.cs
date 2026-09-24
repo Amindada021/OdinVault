@@ -300,7 +300,9 @@ internal sealed class DiscoverDatabasesForm : Form
 
     private void SetBusy(bool busy)
     {
-        UseWaitCursor = busy;
+        Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+        if (!busy)
+            Cursor.Current = Cursors.Default;
         _discoverButton.Enabled = !busy;
         if (busy)
             _addSelectedButton.Enabled = false;
