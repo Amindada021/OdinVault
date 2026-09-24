@@ -45,7 +45,8 @@ public sealed class SqlServerDiscoveryService
                 d.database_id,
                 d.state_desc,
                 d.recovery_model_desc,
-                CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS bit) AS is_system
+                CAST(CASE WHEN d.database_id <= 4 THEN 1 ELSE 0 END AS bit) AS is_system,
+                CAST(COALESCE(HAS_DBACCESS(d.name), 0) AS bit) AS has_access
             FROM sys.databases d
             WHERE d.source_database_id IS NULL
             ORDER BY
@@ -64,7 +65,8 @@ public sealed class SqlServerDiscoveryService
                 reader.GetInt32(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.GetBoolean(4)));
+                reader.GetBoolean(4),
+                reader.GetBoolean(5)));
         }
 
         return result;
@@ -76,4 +78,5 @@ public sealed record SqlServerDatabaseInfo(
     int DatabaseId,
     string State,
     string RecoveryModel,
-    bool IsSystem);
+    bool IsSystem,
+    bool HasAccess);
