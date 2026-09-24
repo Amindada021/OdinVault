@@ -125,8 +125,9 @@ app.MapPost("/api/sql-server/discover", async (
             x.State,
             x.RecoveryModel,
             x.IsSystem,
+            x.HasAccess,
             isRegistered = registeredNames.Contains(x.Name),
-            canBackup = !x.IsSystem && string.Equals(x.State, "ONLINE", StringComparison.OrdinalIgnoreCase)
+            canBackup = !x.IsSystem && x.HasAccess && string.Equals(x.State, "ONLINE", StringComparison.OrdinalIgnoreCase)
         });
 
         return Results.Ok(result);
