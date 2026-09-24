@@ -3,6 +3,7 @@ namespace OdinVault.Manager;
 internal sealed class MainForm : Form
 {
     private readonly AgentApiClient _api = new();
+    private readonly GitHubUpdateService _updates = new();
     private readonly Label _agentStatus = new();
     private readonly Label _lastRefresh = new();
     private readonly DataGridView _grid = new();
@@ -11,6 +12,7 @@ internal sealed class MainForm : Form
     private readonly Button _discoverButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
+    private readonly Button _updateButton = new();
 
     public MainForm()
     {
@@ -24,8 +26,16 @@ internal sealed class MainForm : Form
 
         BuildUi();
 
-        Shown += async (_, _) => await RefreshAllAsync();
-        FormClosed += (_, _) => _api.Dispose();
+        Shown += async (_, _) =>
+        {
+            await RefreshAllAsync();
+            await CheckForUpdatesAsync(silent: true);
+        };
+        FormClosed += (_, _) =>
+        {
+            _api.Dispose();
+            _updates.Dispose();
+        };
     }
 
     private void BuildUi()
@@ -88,8 +98,9 @@ internal sealed class MainForm : Form
         ConfigureButton(_discoverButton, "شناسایی دیتابیس‌های سرور", async (_, _) => await DiscoverDatabasesAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ الان", async (_, _) => await BackupSelectedAsync());
+        ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
-        actions.Controls.AddRange([_backupButton, _testButton, _discoverButton, _addButton, _refreshButton]);
+        actions.Controls.AddRange([_backupButton, _testButton, _discoverButton, _addButton, _refreshButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
@@ -239,6 +250,72 @@ internal sealed class MainForm : Form
         }
     }
 
+    private async Task CheckForUpdatesAsync(bool silent)
+    {
+        _updateButton.Enabled = false;
+        try
+        {
+            var update = await _updates.CheckAsync();
+
+            if (!update.IsUpdateAvailable)
+            {
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        this,
+                        $"OdinVault به‌روز است. نسخه فعلی: {update.CurrentVersion}",
+                        "بروزرسانی OdinVault",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                return;
+            }
+
+            var answer = MessageBox.Show(
+                this,
+                $"نسخه جدید {update.TagName} موجود است.{Environment.NewLine}" +
+                $"نسخه فعلی: {update.CurrentVersion}{Environment.NewLine}{Environment.NewLine}" +
+                "دانلود و نصب شود؟",
+                "بروزرسانی OdinVault",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (answer != DialogResult.Yes)
+                return;
+
+            _updateButton.Text = "در حال دانلود...";
+            var progress = new Progress<int>(percent =>
+            {
+                _updateButton.Text = $"دانلود بروزرسانی {percent}%";
+            });
+
+            var installer = await _updates.DownloadInstallerAsync(update, progress);
+
+            MessageBox.Show(
+                this,
+                "دانلود کامل شد. OdinVault Manager بسته می‌شود و نصب نسخه جدید شروع خواهد شد.",
+                "بروزرسانی OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            GitHubUpdateService.LaunchInstallerAfterExit(installer);
+            BeginInvoke(Application.Exit);
+        }
+        catch (Exception ex)
+        {
+            if (!silent)
+                ShowError(ex);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                _updateButton.Text = "بررسی بروزرسانی";
+                _updateButton.Enabled = true;
+            }
+        }
+    }
+
     private async Task BackupSelectedAsync()
     {
         if (!TryGetSelectedDatabaseId(out var id))
@@ -298,6 +375,7 @@ internal sealed class MainForm : Form
         _discoverButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
+        _updateButton.Enabled = !busy;
     }
 
     private void ShowError(Exception ex)
