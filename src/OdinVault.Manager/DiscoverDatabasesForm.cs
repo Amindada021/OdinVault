@@ -102,18 +102,11 @@ internal sealed class DiscoverDatabasesForm : Form
             if (_grid.IsCurrentCellDirty && _grid.CurrentCell is DataGridViewCheckBoxCell)
                 _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
         };
-        _grid.CellContentClick += (_, e) =>
+        _grid.CellValueChanged += (_, e) =>
         {
             if (e.RowIndex < 0 || e.ColumnIndex != _grid.Columns["Selected"].Index)
                 return;
 
-            var row = _grid.Rows[e.RowIndex];
-            if (row.Tag is not DiscoveredDatabaseResponse item || item.IsSystem || item.IsRegistered || !item.CanBackup)
-                return;
-
-            var cell = row.Cells["Selected"];
-            cell.Value = !Convert.ToBoolean(cell.Value ?? false);
-            _grid.EndEdit();
             UpdateAddButtonState();
         };
 
@@ -121,7 +114,9 @@ internal sealed class DiscoverDatabasesForm : Form
         {
             Name = "Selected",
             HeaderText = "انتخاب",
-            FillWeight = 55
+            FillWeight = 55,
+            ThreeState = false,
+            ReadOnly = false
         });
         _grid.Columns.Add("Name", "دیتابیس");
         _grid.Columns.Add("State", "وضعیت");
