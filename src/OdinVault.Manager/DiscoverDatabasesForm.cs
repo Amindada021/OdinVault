@@ -96,6 +96,26 @@ internal sealed class DiscoverDatabasesForm : Form
         _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.MultiSelect = false;
+        _grid.EditMode = DataGridViewEditMode.EditOnEnter;
+        _grid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_grid.IsCurrentCellDirty && _grid.CurrentCell is DataGridViewCheckBoxCell)
+                _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        _grid.CellContentClick += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex != _grid.Columns["Selected"].Index)
+                return;
+
+            var row = _grid.Rows[e.RowIndex];
+            if (row.Tag is not DiscoveredDatabaseResponse item || item.IsSystem || item.IsRegistered || !item.CanBackup)
+                return;
+
+            var cell = row.Cells["Selected"];
+            cell.Value = !Convert.ToBoolean(cell.Value ?? false);
+            _grid.EndEdit();
+            UpdateAddButtonState();
+        };
 
         _grid.Columns.Add(new DataGridViewCheckBoxColumn
         {
@@ -185,7 +205,7 @@ internal sealed class DiscoverDatabasesForm : Form
                 }
             }
 
-            _addSelectedButton.Enabled = _items.Any(x => x.CanBackup && !x.IsRegistered);
+            UpdateAddButtonState();
 
             if (_items.Count == 0)
             {
@@ -287,7 +307,21 @@ internal sealed class DiscoverDatabasesForm : Form
     {
         UseWaitCursor = busy;
         _discoverButton.Enabled = !busy;
-        _addSelectedButton.Enabled = !busy && _items.Any(x => x.CanBackup && !x.IsRegistered);
+        if (busy)
+            _addSelectedButton.Enabled = false;
+        else
+            UpdateAddButtonState();
+    }
+
+    private void UpdateAddButtonState()
+    {
+        _addSelectedButton.Enabled = _grid.Rows
+            .Cast<DataGridViewRow>()
+            .Any(r =>
+                r.Tag is DiscoveredDatabaseResponse item &&
+                item.CanBackup &&
+                !item.IsRegistered &&
+                Convert.ToBoolean(r.Cells["Selected"].Value ?? false));
     }
 
     private static string? NullIfWhiteSpace(string? value) =>
