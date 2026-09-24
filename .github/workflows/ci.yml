@@ -71,8 +71,8 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OdinVault-Setup
-          path: installer/output/OdinVault-Setup.exe
+          name: OdinVault-Setup-v${{ steps.version.outputs.version }}
+          path: installer/output/OdinVault-Setup-v${{ steps.version.outputs.version }}.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -90,7 +90,7 @@ jobs:
             exit 0
           }
 
-          gh release create $tag "installer/output/OdinVault-Setup.exe" `
+          gh release create $tag "installer/output/OdinVault-Setup-v$version.exe" `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
             --title "OdinVault $tag" `
