@@ -369,7 +369,9 @@ internal sealed class MainForm : Form
 
     private void SetBusy(bool busy)
     {
-        UseWaitCursor = busy;
+        Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+        if (!busy)
+            Cursor.Current = Cursors.Default;
         _refreshButton.Enabled = !busy;
         _addButton.Enabled = !busy;
         _discoverButton.Enabled = !busy;
