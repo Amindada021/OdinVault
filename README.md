@@ -69,7 +69,7 @@ mobile/               # Flutter client will be moved/added here
 - Automatic Google Drive replication after a successful backup.
 - Replica success/failure history and manual retry.
 - Resumable Google Drive upload for large backup files.
-- GitHub Actions CI for .NET 10 restore/build.
+- Windows Manager for local Agent health, database registration, connection testing, and on-demand backups.\n- Self-contained Windows installer that installs the Agent as an automatic Windows Service and installs the Manager UI.\n- GitHub Actions CI for .NET 10 restore/build and Windows installer packaging.
 
 ## First run
 
