@@ -40,6 +40,10 @@ jobs:
         shell: pwsh
         run: dotnet publish src/OdinVault.Agent/OdinVault.Agent.csproj -c Release -r win-x64 --self-contained true -o artifacts/agent
 
+      - name: Publish self-contained Manager
+        shell: pwsh
+        run: dotnet publish src/OdinVault.Manager/OdinVault.Manager.csproj -c Release -r win-x64 --self-contained true -o artifacts/manager
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
@@ -51,7 +55,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: OdinVault-Agent-Setup
-          path: installer/output/OdinVault-Agent-Setup.exe
+          name: OdinVault-Setup
+          path: installer/output/OdinVault-Setup.exe
           if-no-files-found: error
           retention-days: 14
