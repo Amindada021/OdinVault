@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -51,6 +52,11 @@ internal sealed class GitHubUpdateService : IDisposable
                 x.Name.StartsWith("OdinVault-Setup-v", StringComparison.OrdinalIgnoreCase) &&
                 x.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
 
+        var checksum = release.Assets?
+            .FirstOrDefault(x =>
+                installer is not null &&
+                string.Equals(x.Name, installer.Name + ".sha256", StringComparison.OrdinalIgnoreCase));
+
         var currentVersion = GetCurrentVersion();
 
         return new UpdateCheckResult(
@@ -60,7 +66,8 @@ internal sealed class GitHubUpdateService : IDisposable
             release.TagName,
             release.Name,
             release.HtmlUrl,
-            installer?.BrowserDownloadUrl);
+            installer?.BrowserDownloadUrl,
+            checksum?.BrowserDownloadUrl);
     }
 
     public async Task<string> DownloadInstallerAsync(
@@ -70,6 +77,8 @@ internal sealed class GitHubUpdateService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(update.InstallerDownloadUrl))
             throw new InvalidOperationException("فایل نصب OdinVault در Release پیدا نشد.");
+        if (string.IsNullOrWhiteSpace(update.ChecksumDownloadUrl))
+            throw new InvalidOperationException("فایل SHA256 نسخه جدید در Release پیدا نشد.");
 
         var directory = Path.Combine(Path.GetTempPath(), "OdinVault", "Updates");
         Directory.CreateDirectory(directory);
@@ -77,6 +86,14 @@ internal sealed class GitHubUpdateService : IDisposable
         var safeTag = string.Concat(update.TagName.Select(ch =>
             Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
         var destination = Path.Combine(directory, $"OdinVault-Setup-{safeTag}.exe");
+
+        var expectedHashText = await _httpClient.GetStringAsync(update.ChecksumDownloadUrl, cancellationToken);
+        var expectedHash = expectedHashText
+            .Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(expectedHash) || expectedHash.Length != 64)
+            throw new InvalidOperationException("مقدار SHA256 منتشرشده برای نسخه جدید معتبر نیست.");
 
         using var response = await _httpClient.GetAsync(
             update.InstallerDownloadUrl,
@@ -109,7 +126,32 @@ internal sealed class GitHubUpdateService : IDisposable
                 progress?.Report((int)Math.Clamp(readTotal * 100 / total.Value, 0, 100));
         }
 
+        await output.FlushAsync(cancellationToken);
+        output.Close();
+
+        var actualHash = await CalculateSha256Async(destination, cancellationToken);
+        if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+        {
+            try { File.Delete(destination); } catch { }
+            throw new InvalidOperationException(
+                "اعتبار فایل بروزرسانی تأیید نشد. SHA256 فایل دانلودشده با مقدار منتشرشده در GitHub برابر نیست.");
+        }
+
         return destination;
+    }
+
+    private static async Task<string> CalculateSha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 128,
+            useAsync: true);
+
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     public static void LaunchInstallerAfterExit(string installerPath)
@@ -164,4 +206,5 @@ internal sealed record UpdateCheckResult(
     string TagName,
     string? ReleaseName,
     string? ReleaseUrl,
-    string? InstallerDownloadUrl);
+    string? InstallerDownloadUrl,
+    string? ChecksumDownloadUrl);
