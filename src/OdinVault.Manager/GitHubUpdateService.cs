@@ -154,23 +154,25 @@ internal sealed class GitHubUpdateService : IDisposable
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    public static void LaunchInstallerAfterExit(string installerPath)
+    public static Process LaunchInstaller(string installerPath)
     {
         if (!File.Exists(installerPath))
             throw new FileNotFoundException("فایل نصب دانلودشده پیدا نشد.", installerPath);
 
-        var command = $"timeout /t 2 /nobreak >nul & start \"\" \"{installerPath}\" /CLOSEAPPLICATIONS";
         var startInfo = new ProcessStartInfo
         {
-            FileName = "cmd.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
+            FileName = installerPath,
+            Arguments = "/CLOSEAPPLICATIONS",
+            UseShellExecute = true,
+            Verb = "runas",
+            WorkingDirectory = Path.GetDirectoryName(installerPath) ?? Environment.CurrentDirectory
         };
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add(command);
 
-        Process.Start(startInfo);
+        var process = Process.Start(startInfo);
+        if (process is null)
+            throw new InvalidOperationException("اجرای Installer شروع نشد.");
+
+        return process;
     }
 
     private static bool TryParseVersion(string tag, out Version version)
