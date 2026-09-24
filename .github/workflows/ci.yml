@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,6 +39,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "src/OdinVault.Manager/OdinVault.Manager.csproj"
+          $version = [string]($project.Project.PropertyGroup.Version | Select-Object -First 1)
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version was not found in OdinVault.Manager.csproj"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Publish self-contained Agent
         shell: pwsh
         run: dotnet publish src/OdinVault.Agent/OdinVault.Agent.csproj -c Release -r win-x64 --self-contained true -o artifacts/agent
@@ -50,12 +64,34 @@ jobs:
 
       - name: Build Setup EXE
         shell: pwsh
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\OdinVault.Agent.iss'
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "installer\OdinVault.Agent.iss"
 
-      - name: Upload installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: OdinVault-Setup
           path: installer/output/OdinVault-Setup.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          gh release view $tag --repo "${{ github.repository }}" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; skipping release creation."
+            exit 0
+          }
+
+          gh release create $tag "installer/output/OdinVault-Setup.exe" `
+            --repo "${{ github.repository }}" `
+            --target "${{ github.sha }}" `
+            --title "OdinVault $tag" `
+            --generate-notes
