@@ -1,5 +1,7 @@
 #define MyAppName "OdinVault"
-#define MyAppVersion "0.2.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.2.1"
+#endif
 #define MyAppPublisher "OdinVault"
 #define AgentExeName "OdinVault.Agent.exe"
 #define ManagerExeName "OdinVault.Manager.exe"
@@ -19,6 +21,8 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+CloseApplications=yes
+RestartApplications=no
 UninstallDisplayIcon={app}\Manager\{#ManagerExeName}
 
 [Files]
