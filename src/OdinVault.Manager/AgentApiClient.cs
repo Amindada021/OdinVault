@@ -161,6 +161,7 @@ internal sealed record DiscoveredDatabaseResponse(
     string State,
     string RecoveryModel,
     bool IsSystem,
+    bool HasAccess,
     bool IsRegistered,
     bool CanBackup);
 
