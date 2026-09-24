@@ -298,8 +298,8 @@ internal sealed class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
 
-            GitHubUpdateService.LaunchInstallerAfterExit(installer);
-            BeginInvoke(Application.Exit);
+            GitHubUpdateService.LaunchInstaller(installer);
+            Application.Exit();
         }
         catch (Exception ex)
         {
