@@ -68,11 +68,22 @@ jobs:
           $version = "${{ steps.version.outputs.version }}"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "installer\OdinVault.Agent.iss"
 
+      - name: Create SHA256 checksum
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installer = "installer/output/OdinVault-Setup-v$version.exe"
+          $checksum = "$installer.sha256"
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  OdinVault-Setup-v$version.exe" | Set-Content -Path $checksum -Encoding ascii
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: OdinVault-Setup-v${{ steps.version.outputs.version }}
-          path: installer/output/OdinVault-Setup-v${{ steps.version.outputs.version }}.exe
+          path: |
+            installer/output/OdinVault-Setup-v${{ steps.version.outputs.version }}.exe
+            installer/output/OdinVault-Setup-v${{ steps.version.outputs.version }}.exe.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -90,7 +101,7 @@ jobs:
             exit 0
           }
 
-          gh release create $tag "installer/output/OdinVault-Setup-v$version.exe" `
+          gh release create $tag "installer/output/OdinVault-Setup-v$version.exe" "installer/output/OdinVault-Setup-v$version.exe.sha256" `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
             --title "OdinVault $tag" `
