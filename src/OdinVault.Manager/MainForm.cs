@@ -8,6 +8,7 @@ internal sealed class MainForm : Form
     private readonly DataGridView _grid = new();
     private readonly Button _refreshButton = new();
     private readonly Button _addButton = new();
+    private readonly Button _discoverButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
 
@@ -83,11 +84,12 @@ internal sealed class MainForm : Form
         };
 
         ConfigureButton(_refreshButton, "بروزرسانی", async (_, _) => await RefreshAllAsync());
-        ConfigureButton(_addButton, "افزودن دیتابیس", async (_, _) => await AddDatabaseAsync());
+        ConfigureButton(_addButton, "افزودن دستی", async (_, _) => await AddDatabaseAsync());
+        ConfigureButton(_discoverButton, "شناسایی دیتابیس‌های سرور", async (_, _) => await DiscoverDatabasesAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ الان", async (_, _) => await BackupSelectedAsync());
 
-        actions.Controls.AddRange([_backupButton, _testButton, _addButton, _refreshButton]);
+        actions.Controls.AddRange([_backupButton, _testButton, _discoverButton, _addButton, _refreshButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
@@ -207,6 +209,15 @@ internal sealed class MainForm : Form
         }
     }
 
+    private async Task DiscoverDatabasesAsync()
+    {
+        using var dialog = new DiscoverDatabasesForm(_api);
+        dialog.ShowDialog(this);
+
+        if (dialog.AnyAdded)
+            await RefreshAllAsync();
+    }
+
     private async Task TestSelectedAsync()
     {
         if (!TryGetSelectedDatabaseId(out var id))
@@ -284,6 +295,7 @@ internal sealed class MainForm : Form
         UseWaitCursor = busy;
         _refreshButton.Enabled = !busy;
         _addButton.Enabled = !busy;
+        _discoverButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
     }
