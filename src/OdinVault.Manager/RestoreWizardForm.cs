@@ -14,6 +14,7 @@ internal sealed class RestoreWizardForm : Form
     private readonly Label status = new();
     private IReadOnlyList<BackupHistoryOverviewResponse> candidates = [];
     private RestorePreflightClientResponse? currentPreflight;
+    private bool restoreRunning;
 
     public RestoreWizardForm(AgentApiClient api)
     {
@@ -150,6 +151,19 @@ internal sealed class RestoreWizardForm : Form
         root.Controls.Add(actions, 0, 5);
 
         CancelButton = close;
+        FormClosing += (_, e) =>
+        {
+            if (!restoreRunning)
+                return;
+
+            e.Cancel = true;
+            MessageBox.Show(
+                this,
+                "Restore در حال اجراست. تا پایان عملیات این پنجره را نبندید.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        };
         Shown += async (_, _) => await LoadBackupsAsync();
     }
 
@@ -283,6 +297,7 @@ internal sealed class RestoreWizardForm : Form
         if (answer != DialogResult.Yes)
             return;
 
+        restoreRunning = true;
         SetBusy(true, "Restore در حال اجراست؛ این پنجره را نبندید...");
         try
         {
@@ -318,6 +333,7 @@ internal sealed class RestoreWizardForm : Form
         }
         finally
         {
+            restoreRunning = false;
             if (progress.Value != 100)
             {
                 progress.Style = ProgressBarStyle.Marquee;
@@ -384,7 +400,10 @@ internal sealed class RestoreWizardForm : Form
             var local = Backup.StartedAtUtc.Kind == DateTimeKind.Utc
                 ? Backup.StartedAtUtc.ToLocalTime()
                 : Backup.StartedAtUtc;
-            return $"{Backup.DatabaseName} — {local:yyyy/MM/dd HH:mm} — {FormatBytes(Backup.SizeBytes)}";
+            var calendar = new System.Globalization.PersianCalendar();
+            var date =
+                $"{calendar.GetYear(local):0000}/{calendar.GetMonth(local):00}/{calendar.GetDayOfMonth(local):00} {local:HH:mm}";
+            return $"{Backup.DatabaseName} — {date} — {FormatBytes(Backup.SizeBytes)}";
         }
     }
 }
