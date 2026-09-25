@@ -457,8 +457,8 @@ internal sealed class MainForm : Form
             kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
 
         kpis.Controls.Add(BuildKpiCard("دیتابیس‌های محافظت‌شده", _protectedValue, "از کل دیتابیس‌های فعال"), 0, 0);
-        kpis.Controls.Add(BuildKpiCard("خطاهای ۲۴ ساعت اخیر", _failedValue, "Job ناموفق یا متوقف‌شده"), 1, 0);
-        kpis.Controls.Add(BuildKpiCard("Jobهای فعال", _activeJobsValue, "در صف یا در حال اجرا"), 2, 0);
+        kpis.Controls.Add(BuildKpiCard("خطاهای ۲۴ ساعت اخیر", _failedValue, "عملیات ناموفق یا متوقف‌شده"), 1, 0);
+        kpis.Controls.Add(BuildKpiCard("عملیات فعال", _activeJobsValue, "در صف یا در حال اجرا"), 2, 0);
         kpis.Controls.Add(BuildKpiCard("فضای آزاد بکاپ", _storageValue, "فضای مقصد محلی Agent"), 3, 0);
         root.Controls.Add(kpis, 0, 0);
 
@@ -888,16 +888,17 @@ internal sealed class MainForm : Form
             return "نامشخص";
 
         var bytes = value.Value;
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024L * 1024) return $"{bytes / 1024d:0.0} KB";
-        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024d * 1024):0.0} MB";
-        return $"{bytes / (1024d * 1024 * 1024):0.00} GB";
+        if (bytes < 1024) return $"{bytes:N0} بایت";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024d:0.0} کیلوبایت";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024d * 1024):0.0} مگابایت";
+        return $"{bytes / (1024d * 1024 * 1024):0.00} گیگابایت";
     }
 
     private static string FormatDashboardTime(DateTime utc)
     {
         var local = utc.Kind == DateTimeKind.Utc ? utc.ToLocalTime() : utc;
-        return local.ToString("yyyy/MM/dd HH:mm");
+        var calendar = new System.Globalization.PersianCalendar();
+        return $"{calendar.GetYear(local):0000}/{calendar.GetMonth(local):00}/{calendar.GetDayOfMonth(local):00} {local:HH:mm}";
     }
 
     private Control BuildBackupsPage()
@@ -1903,8 +1904,8 @@ internal sealed class MainForm : Form
             kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
 
         kpis.Controls.Add(BuildKpiCard("نرخ موفقیت", _reportSuccessRate, "در بازه انتخاب‌شده"), 0, 0);
-        kpis.Controls.Add(BuildKpiCard("بکاپ ناموفق", _reportFailureCount, "تعداد Failure"), 1, 0);
-        kpis.Controls.Add(BuildKpiCard("میانگین مدت", _reportAverageDuration, "Backupهای موفق"), 2, 0);
+        kpis.Controls.Add(BuildKpiCard("بکاپ ناموفق", _reportFailureCount, "تعداد بکاپ‌های ناموفق"), 1, 0);
+        kpis.Controls.Add(BuildKpiCard("میانگین مدت", _reportAverageDuration, "بکاپ‌های موفق"), 2, 0);
         kpis.Controls.Add(BuildKpiCard("دیتابیس محافظت‌شده", _reportProtected, "از کل دیتابیس فعال"), 3, 0);
         root.Controls.Add(kpis, 0, 1);
 
