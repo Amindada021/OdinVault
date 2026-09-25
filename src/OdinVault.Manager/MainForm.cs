@@ -248,6 +248,7 @@ internal sealed class MainForm : Form
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            RightToLeft = RightToLeft.No,
             ColumnCount = 3,
             RowCount = 1,
             Margin = Padding.Empty,
@@ -291,7 +292,8 @@ internal sealed class MainForm : Form
         var navigation = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.RightToLeft,
+            RightToLeft = RightToLeft.No,
+            FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             AutoScroll = true,
             Margin = Padding.Empty,
@@ -342,7 +344,8 @@ internal sealed class MainForm : Form
             TextColor = Color.FromArgb(71, 85, 105),
             HoverTextColor = Color.FromArgb(37, 99, 235),
             BorderColor = Color.FromArgb(226, 232, 240),
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            RightToLeft = RightToLeft.Yes
         };
 
         button.Click += (_, _) => ShowPage(key);
@@ -2896,20 +2899,45 @@ internal sealed class MainForm : Form
             combo.BackColor = surface;
             combo.ForeColor = primary;
         }
+        else if (control is Button button && control is not ReaLTaiizor.Controls.HopeButton)
+        {
+            if (button.FlatStyle != FlatStyle.System)
+            {
+                button.BackColor = dark ? Color.FromArgb(51, 65, 85) : Color.White;
+                button.ForeColor = primary;
+                button.FlatAppearance.BorderColor = border;
+                button.FlatAppearance.MouseOverBackColor = dark
+                    ? Color.FromArgb(71, 85, 105)
+                    : Color.FromArgb(248, 250, 252);
+            }
+        }
         else if (control is Label label)
         {
-            if (label.ForeColor == Color.Empty ||
-                label.ForeColor == SystemColors.ControlText ||
-                label.ForeColor == Color.FromArgb(45, 55, 70) ||
-                label.ForeColor == Color.FromArgb(55, 65, 80) ||
-                label.ForeColor == Color.FromArgb(70, 80, 95) ||
-                label.ForeColor == Color.FromArgb(95, 105, 120) ||
-                label.ForeColor == Color.FromArgb(105, 115, 130) ||
-                label.ForeColor == Color.FromArgb(125, 135, 150) ||
-                label.ForeColor == Color.FromArgb(130, 140, 155))
-            {
+            var semantic =
+                label.ForeColor == Color.FromArgb(190, 65, 65) ||
+                label.ForeColor == Color.FromArgb(155, 50, 50) ||
+                label.ForeColor == Color.FromArgb(145, 95, 25) ||
+                label.ForeColor == Color.FromArgb(150, 45, 45) ||
+                label.ForeColor == Color.FromArgb(140, 95, 25) ||
+                label.ForeColor == Color.FromArgb(22, 163, 74) ||
+                label.ForeColor == Color.FromArgb(185, 28, 28) ||
+                label.ForeColor == Color.FromArgb(180, 83, 9) ||
+                label.ForeColor == Color.FromArgb(37, 99, 235);
+
+            if (!semantic)
                 label.ForeColor = label.Font.Bold ? primary : secondary;
-            }
+            else if (dark && label.ForeColor == Color.FromArgb(37, 99, 235))
+                label.ForeColor = Color.FromArgb(147, 197, 253);
+        }
+        else if (control is CheckBox checkBox)
+        {
+            checkBox.ForeColor = primary;
+            checkBox.BackColor = checkBox.Parent?.BackColor ?? background;
+        }
+        else if (control is RadioButton radioButton)
+        {
+            radioButton.ForeColor = primary;
+            radioButton.BackColor = radioButton.Parent?.BackColor ?? background;
         }
         else if (control is Panel or TableLayoutPanel or FlowLayoutPanel)
         {
