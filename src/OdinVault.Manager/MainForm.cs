@@ -441,8 +441,8 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(246, 248, 252)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 330));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 315));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var kpis = new TableLayoutPanel
@@ -695,14 +695,14 @@ internal sealed class MainForm : Form
             ColumnCount = 2,
             RowCount = 3,
             Margin = Padding.Empty,
-            Padding = new Padding(18, 16, 18, 14),
+            Padding = new Padding(18, 14, 18, 14),
             BackColor = Color.White
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 6));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
 
         var accentBar = new Panel
         {
@@ -725,7 +725,7 @@ internal sealed class MainForm : Form
         value.Text = "—";
         value.Dock = DockStyle.Fill;
         value.TextAlign = ContentAlignment.MiddleRight;
-        value.Font = new Font(Font.FontFamily, 27F, FontStyle.Bold);
+        value.Font = new Font(Font.FontFamily, 23F, FontStyle.Bold);
         value.ForeColor = Color.FromArgb(15, 23, 42);
         layout.Controls.Add(value, 0, 1);
 
@@ -1852,8 +1852,8 @@ internal sealed class MainForm : Form
             BackColor = Color.FromArgb(245, 247, 250)
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 280));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 265));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var toolbar = new FlowLayoutPanel
@@ -2438,12 +2438,12 @@ internal sealed class MainForm : Form
         _settingTheme.DropDownStyle = ComboBoxStyle.DropDownList;
         _settingTheme.Width = 180;
         _settingTheme.Items.Clear();
-        _settingTheme.Items.Add("Odin Light");
+        _settingTheme.Items.AddRange(["Odin Light", "Odin Dark"]);
         panel.Controls.Add(_settingTheme, 0, 1);
 
         panel.Controls.Add(new Label
         {
-            Text = "نسخه جدید ظاهر OdinVault فعلاً روی Odin Light متمرکز است. Dark قدیمی حذف شده تا بعداً یک Dark واقعی و مستقل طراحی شود.",
+            Text = "Odin Dark یک palette مستقل برای پس‌زمینه، کارت‌ها، جدول‌ها، نمودارها و Top Navigation دارد.",
             AutoSize = true,
             MaximumSize = new Size(430, 0),
             ForeColor = Color.FromArgb(105, 115, 130),
@@ -2459,7 +2459,10 @@ internal sealed class MainForm : Form
         };
         apply.Click += (_, _) =>
         {
-            _settings = _settings with { Theme = "Light" };
+            _settings = _settings with
+            {
+                Theme = _settingTheme.SelectedIndex == 1 ? "Dark" : "Light"
+            };
             _settingsStore.Save(_settings);
             ApplyTheme();
         };
@@ -2592,7 +2595,9 @@ internal sealed class MainForm : Form
         _settingMinimizeToTray.Checked = _settings.MinimizeToTray;
         _settingTrayNotifications.Checked = _settings.ShowTrayNotifications;
         _settingAutoUpdate.Checked = _settings.CheckForUpdatesOnStart;
-        _settingTheme.SelectedIndex = 0;
+        _settingTheme.SelectedIndex = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : 0;
         _settingMobileUrl.Text = _api.GetMobileBaseUrl();
         _settingVersion.Text = $"نسخه Manager: {_updates.GetCurrentVersion()}";
     }
@@ -2604,7 +2609,7 @@ internal sealed class MainForm : Form
             _settingMinimizeToTray.Checked,
             _settingTrayNotifications.Checked,
             _settingAutoUpdate.Checked,
-            "Light");
+            _settingTheme.SelectedIndex == 1 ? "Dark" : "Light");
 
         _settingsStore.Save(_settings);
         ApplyTheme();
@@ -2776,25 +2781,67 @@ internal sealed class MainForm : Form
 
     private void ApplyTheme()
     {
-        BackColor = Color.FromArgb(246, 248, 252);
-        ApplyThemeToContent();
+        var dark = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        var background = dark ? Color.FromArgb(15, 23, 42) : Color.FromArgb(246, 248, 252);
+        var surface = dark ? Color.FromArgb(30, 41, 59) : Color.White;
+        var primary = dark ? Color.FromArgb(241, 245, 249) : Color.FromArgb(30, 41, 59);
+        var secondary = dark ? Color.FromArgb(148, 163, 184) : Color.FromArgb(100, 116, 139);
+        var border = dark ? Color.FromArgb(71, 85, 105) : Color.FromArgb(226, 232, 240);
+
+        BackColor = background;
+        ApplyThemeRecursive(
+            this,
+            dark,
+            background,
+            surface,
+            primary,
+            secondary,
+            border);
+
+        foreach (var item in _navigationButtons)
+        {
+            var button = item.Value;
+            var active = button.ButtonType == ReaLTaiizor.Util.HopeButtonType.Primary;
+            button.DefaultColor = surface;
+            button.PrimaryColor = dark
+                ? Color.FromArgb(59, 130, 246)
+                : Color.FromArgb(37, 99, 235);
+            button.BorderColor = border;
+            button.TextColor = active
+                ? Color.White
+                : primary;
+            button.HoverTextColor = active
+                ? Color.White
+                : dark
+                    ? Color.FromArgb(147, 197, 253)
+                    : Color.FromArgb(37, 99, 235);
+            button.Invalidate();
+        }
+
+        _pageTitle.ForeColor = primary;
+        _lastRefresh.ForeColor = secondary;
+        _contentHost.BackColor = background;
+
+        // Preserve the semantic Agent status colors while adapting the badge surface.
+        var offline = _sidebarAgentStatus.Text.Contains("Offline", StringComparison.OrdinalIgnoreCase);
+        var attention = _sidebarAgentStatus.Text.Contains("Attention", StringComparison.OrdinalIgnoreCase);
+        _sidebarAgentStatus.ForeColor = offline
+            ? (dark ? Color.FromArgb(252, 165, 165) : Color.FromArgb(185, 28, 28))
+            : attention
+                ? (dark ? Color.FromArgb(253, 186, 116) : Color.FromArgb(180, 83, 9))
+                : (dark ? Color.FromArgb(134, 239, 172) : Color.FromArgb(22, 163, 74));
+        _sidebarAgentStatus.BackColor = offline
+            ? (dark ? Color.FromArgb(69, 10, 10) : Color.FromArgb(254, 242, 242))
+            : attention
+                ? (dark ? Color.FromArgb(69, 26, 3) : Color.FromArgb(255, 251, 235))
+                : (dark ? Color.FromArgb(5, 46, 22) : Color.FromArgb(240, 253, 244));
+
+        Invalidate(true);
     }
 
     private void ApplyThemeToContent()
     {
-        var background = Color.FromArgb(246, 248, 252);
-        var surface = Color.White;
-        var primary = Color.FromArgb(30, 41, 59);
-        var secondary = Color.FromArgb(100, 116, 139);
-
-        _contentHost.BackColor = background;
-        ApplyThemeRecursive(
-            _contentHost,
-            dark: false,
-            background,
-            surface,
-            primary,
-            secondary);
+        ApplyTheme();
     }
 
     private static void ApplyThemeRecursive(
@@ -2803,17 +2850,16 @@ internal sealed class MainForm : Form
         Color background,
         Color surface,
         Color primary,
-        Color secondary)
+        Color secondary,
+        Color border)
     {
         if (control is DataGridView grid)
         {
             grid.BackgroundColor = surface;
-            grid.GridColor = dark
-                ? Color.FromArgb(58, 67, 80)
-                : Color.FromArgb(228, 233, 240);
+            grid.GridColor = border;
             grid.ColumnHeadersDefaultCellStyle.BackColor = dark
-                ? Color.FromArgb(44, 52, 65)
-                : Color.FromArgb(241, 244, 248);
+                ? Color.FromArgb(51, 65, 85)
+                : Color.FromArgb(248, 250, 252);
             grid.ColumnHeadersDefaultCellStyle.ForeColor = primary;
             grid.DefaultCellStyle.BackColor = surface;
             grid.DefaultCellStyle.ForeColor = primary;
@@ -2826,7 +2872,16 @@ internal sealed class MainForm : Form
         {
             chart.BackColor = surface;
             chart.ForeColor = primary;
+            chart.GridLineColor = dark ? Color.FromArgb(51, 65, 85) : Color.FromArgb(235, 239, 244);
+            chart.SecondaryTextColor = secondary;
+            chart.BorderColor = border;
             chart.Invalidate();
+        }
+        else if (control is ReaLTaiizor.Controls.Panel modernPanel)
+        {
+            modernPanel.BackColor = surface;
+            modernPanel.EdgeColor = border;
+            modernPanel.Invalidate();
         }
         else if (control is TextBoxBase textBox)
         {
@@ -2856,17 +2911,21 @@ internal sealed class MainForm : Form
         else if (control is Panel or TableLayoutPanel or FlowLayoutPanel)
         {
             if (control.BackColor == Color.White ||
-                control.BackColor == Color.FromArgb(245, 247, 250) ||
-                control.BackColor == SystemColors.Control)
+                control.BackColor == Color.FromArgb(30, 41, 59))
             {
-                control.BackColor = control.Parent == null || control.Dock == DockStyle.Fill
-                    ? background
-                    : surface;
+                control.BackColor = surface;
+            }
+            else if (control.BackColor == Color.FromArgb(245, 247, 250) ||
+                     control.BackColor == Color.FromArgb(246, 248, 252) ||
+                     control.BackColor == Color.FromArgb(15, 23, 42) ||
+                     control.BackColor == SystemColors.Control)
+            {
+                control.BackColor = background;
             }
         }
 
         foreach (Control child in control.Controls)
-            ApplyThemeRecursive(child, dark, background, surface, primary, secondary);
+            ApplyThemeRecursive(child, dark, background, surface, primary, secondary, border);
     }
 
     private Control BuildPlaceholderPage(string title, string description)
@@ -3758,12 +3817,18 @@ internal sealed class MainForm : Form
                 return;
 
             _updateButton.Text = "در حال دانلود...";
-            var progress = new Progress<int>(percent =>
+            using var progressDialog = new UpdateProgressForm(update.TagName);
+            progressDialog.Show(this);
+            progressDialog.BringToFront();
+
+            var progress = new Progress<UpdateDownloadProgress>(value =>
             {
-                _updateButton.Text = $"دانلود بروزرسانی {percent}%";
+                _updateButton.Text = $"دانلود بروزرسانی {value.Percent}%";
+                progressDialog.Report(value);
             });
 
             var installer = await _updates.DownloadInstallerAsync(update, progress);
+            progressDialog.MarkCompleted();
 
             MessageBox.Show(
                 this,
