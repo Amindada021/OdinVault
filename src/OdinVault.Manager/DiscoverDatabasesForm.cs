@@ -10,7 +10,7 @@ internal sealed class DiscoverDatabasesForm : Form
     private readonly CheckBox _trustCertificate = new() { Text = "Trust Server Certificate", Checked = true, AutoSize = true };
     private readonly TextBox _backupDirectory = new() { Text = @"D:\Backups\OdinVault" };
     private readonly NumericUpDown _maxBackups = new() { Minimum = 1, Maximum = 1000, Value = 7 };
-    private readonly TextBox _cron = new();
+    private readonly ScheduleEditor _schedule = new();
     private readonly CheckBox _verify = new() { Text = "Verify بعد از بکاپ", Checked = true, AutoSize = true };
     private readonly DataGridView _grid = new();
     private readonly Button _discoverButton = new();
@@ -65,7 +65,7 @@ internal sealed class DiscoverDatabasesForm : Form
         AddField(fields, 1, 2, "Password", _password);
         AddField(fields, 2, 0, "مسیر بکاپ", _backupDirectory);
         AddField(fields, 2, 2, "تعداد نگهداری", _maxBackups);
-        AddField(fields, 3, 0, "Cron (UTC)", _cron);
+        AddField(fields, 3, 0, "زمان‌بندی", _schedule);
 
         var checks = new FlowLayoutPanel
         {
@@ -283,7 +283,7 @@ internal sealed class DiscoverDatabasesForm : Form
                         _backupDirectory.Text.Trim(),
                         (int)_maxBackups.Value,
                         _verify.Checked,
-                        NullIfWhiteSpace(_cron.Text),
+                        _schedule.ScheduleCron,
                         true));
 
                     if (created is not null)
