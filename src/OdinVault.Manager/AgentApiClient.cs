@@ -51,6 +51,44 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(JsonOptions, cancellationToken);
     }
 
+    public async Task<StorageOverviewResponse?> GetStorageOverviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Get, "api/storage/overview");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<StorageOverviewResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
+    public async Task<StorageConnectionTestResponse?> TestStorageTargetAsync(
+        Guid targetId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Post,
+            $"api/storage-targets/{targetId}/connection-test");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<StorageConnectionTestResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
+    public async Task UpdateStorageTargetAsync(
+        Guid targetId,
+        UpdateStorageTargetClientRequest body,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Put,
+            $"api/storage-targets/{targetId}");
+        request.Content = JsonContent.Create(body, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<BackupOverviewResponse?> GetBackupOverviewAsync(
         int take = 200,
         CancellationToken cancellationToken = default)
@@ -360,6 +398,45 @@ internal sealed record DashboardActivityResponse(
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
     string? Error);
+
+internal sealed record StorageOverviewResponse(
+    StorageLocalOverviewResponse Local,
+    IReadOnlyList<StorageTargetOverviewResponse> Targets);
+
+internal sealed record StorageLocalOverviewResponse(
+    string Name,
+    string Directory,
+    long? FreeBytes,
+    bool Exists,
+    bool Writable);
+
+internal sealed record StorageTargetOverviewResponse(
+    Guid Id,
+    string Name,
+    int Type,
+    bool IsEnabled,
+    string? FolderId,
+    string? AccountEmail,
+    string? BaseUrl,
+    bool IsConnected,
+    int LinkedDatabases,
+    int SucceededReplicas,
+    int FailedReplicas,
+    DateTime? LastActivityAtUtc,
+    DateTime? LastSuccessAtUtc,
+    DateTime? LastFailureAtUtc,
+    string? LastError);
+
+internal sealed record StorageConnectionTestResponse(
+    bool Success,
+    string? Message);
+
+internal sealed record UpdateStorageTargetClientRequest(
+    string Name,
+    string? FolderId,
+    bool IsEnabled,
+    string? BaseUrl,
+    string? ApiKey);
 
 internal sealed record BackupOverviewResponse(
     DateTime Utc,
