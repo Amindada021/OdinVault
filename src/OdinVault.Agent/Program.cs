@@ -63,6 +63,7 @@ builder.Services.AddSingleton<IBackupStorageProvider>(_ => new LocalBackupStorag
 builder.Services.AddSingleton<BackupExecutionCoordinator>();
 builder.Services.AddScoped<StorageReplicationService>();
 builder.Services.AddScoped<BackupOrchestrator>();
+builder.Services.AddScoped<BackupJobRecoveryService>();
 builder.Services.AddHostedService<BackupScheduler>();
 builder.Services.AddHostedService<ReplicationRetryWorker>();
 builder.Services.AddSingleton<BackupJobs>();
@@ -75,6 +76,9 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<OdinVaultDbContext>();
     await SqliteMigrationBootstrapper.PrepareAsync(db);
     await db.Database.MigrateAsync();
+
+    var recovery = scope.ServiceProvider.GetRequiredService<BackupJobRecoveryService>();
+    await recovery.RecoverAsync();
 }
 
 app.Logger.LogInformation(
