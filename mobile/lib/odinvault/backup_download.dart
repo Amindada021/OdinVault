@@ -115,13 +115,15 @@ class _BackupDownloadState extends State<_BackupDownload> {
     token.cancel();
     watch.stop();
     final temp = path;
-    if (temp != null) unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
-      try {
-        if (await File(temp).exists()) {
-          await File(temp).delete();
-        }
-      } catch (_) { }
-    }));
+    if (temp != null) {
+      unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
+        try {
+          if (await File(temp).exists()) {
+            await File(temp).delete();
+          }
+        } catch (_) { }
+      }));
+    }
     super.dispose();
   }
 
