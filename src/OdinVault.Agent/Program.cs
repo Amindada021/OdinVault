@@ -474,6 +474,7 @@ app.MapDatabaseOverviewEndpoints();
 app.MapBackupOverviewEndpoints();
 app.MapRestoreEndpoints();
 app.MapAlertEndpoints();
+app.MapReportEndpoints();
 app.MapStorageEndpoints();
 app.MapReplicaTargetEndpoints();
 app.MapReplicaEndpoints(app.Services.GetRequiredService<ReplicaSettings>());
