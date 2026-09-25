@@ -7,7 +7,8 @@ internal sealed record ManagerSettings(
     bool MinimizeToTray = true,
     bool ShowTrayNotifications = true,
     bool CheckForUpdatesOnStart = true,
-    string Theme = "Light");
+    string Theme = "Light",
+    string Language = "fa");
 
 internal sealed class ManagerSettingsStore
 {
@@ -50,7 +51,15 @@ internal sealed class ManagerSettingsStore
             ? "Dark"
             : "Light";
 
-        var normalized = settings with { Theme = normalizedTheme };
+        var normalizedLanguage = settings.Language.Equals("en", StringComparison.OrdinalIgnoreCase)
+            ? "en"
+            : "fa";
+
+        var normalized = settings with
+        {
+            Theme = normalizedTheme,
+            Language = normalizedLanguage
+        };
         var tempPath = path + ".tmp";
         File.WriteAllText(tempPath, JsonSerializer.Serialize(normalized, JsonOptions));
         File.Move(tempPath, path, overwrite: true);
