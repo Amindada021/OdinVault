@@ -129,22 +129,9 @@ jobs:
         run: |
           flutter create --platforms=android --org com.odinvault --project-name odinvault_mobile .
           rm -f test/widget_test.dart
+          python3 ../scripts/android_manifest.py configure android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path
-          path = Path("android/app/src/main/AndroidManifest.xml")
-          text = path.read_text()
-          if 'android.permission.INTERNET' not in text:
-              text = text.replace(
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>'
-              )
-          text = text.replace('android:label="odinvault_mobile"', 'android:label="OdinVault"')
-          text = text.replace(
-              'android:name="${applicationName}"',
-              'android:name="${applicationName}"\n        android:usesCleartextTraffic="true"'
-          )
-          path.write_text(text)
-
           gradle = Path("android/app/build.gradle.kts")
           gradle_text = gradle.read_text()
           gradle_text = gradle_text.replace(
@@ -170,6 +157,13 @@ jobs:
       - name: Build Android APK
         working-directory: mobile
         run: flutter build apk --release
+
+      - name: Validate final APK network permissions
+        shell: bash
+        run: |
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          "$APKANALYZER" manifest print mobile/build/app/outputs/flutter-apk/app-release.apk > mobile/release-manifest.xml
+          python3 scripts/android_manifest.py validate mobile/release-manifest.xml
 
       - name: Read versions
         id: versions
