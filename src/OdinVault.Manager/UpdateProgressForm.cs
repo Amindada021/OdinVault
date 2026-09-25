@@ -66,6 +66,24 @@ internal sealed class UpdateProgressForm : Form
         root.Controls.Add(_status);
         root.Controls.Add(title);
         Controls.Add(root);
+
+        Shown += (_, _) =>
+        {
+            var dark = Application.OpenForms
+                .OfType<MainForm>()
+                .Any(form => form.IsOdinDarkTheme);
+
+            if (dark)
+            {
+                BackColor = Color.FromArgb(30, 41, 59);
+                root.BackColor = Color.FromArgb(30, 41, 59);
+                title.ForeColor = Color.FromArgb(241, 245, 249);
+                _status.ForeColor = Color.FromArgb(241, 245, 249);
+                _details.ForeColor = Color.FromArgb(148, 163, 184);
+            }
+
+            Win11Backdrop.TryApply(this, transient: true, dark: dark);
+        };
     }
 
     public void Report(UpdateDownloadProgress value)
