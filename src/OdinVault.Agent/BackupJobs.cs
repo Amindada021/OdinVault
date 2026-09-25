@@ -90,7 +90,7 @@ public sealed class BackupJobs(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 if (job?.ExecutionToken is Guid executionToken)
-                    await TryInterruptAsync(job.Id, executionToken, "service_stopping", "سرویس هنگام اجرای بکاپ متوقف شد.");
+                    await FinalizeOnShutdownAsync(job.Id, executionToken);
 
                 break;
             }
@@ -108,6 +108,58 @@ public sealed class BackupJobs(
                 if (job.ExecutionToken is Guid executionToken)
                     await TryFailAsync(job.Id, executionToken, "backup_failed", "عملیات بکاپ کامل نشد؛ جزئیات را در تاریخچه بکاپ سرور بررسی کنید.");
             }
+        }
+    }
+
+    private async Task FinalizeOnShutdownAsync(Guid jobId, Guid executionToken)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var store = scope.ServiceProvider.GetRequiredService<IBackupJobStore>();
+            var current = await store.GetAsync(jobId, CancellationToken.None);
+
+            if (current?.BackupRecordId is Guid backupRecordId)
+            {
+                var completed = await store.CompleteAsync(
+                    jobId,
+                    executionToken,
+                    backupRecordId,
+                    CancellationToken.None);
+
+                if (completed.Status == BackupJobMutationStatus.Updated)
+                {
+                    logger.LogInformation(
+                        "Backup job {JobId} was finalized as succeeded during service shutdown because its local backup had already completed.",
+                        jobId);
+                    return;
+                }
+
+                if (completed.Status == BackupJobMutationStatus.StateConflict &&
+                    completed.Job?.Status == BackupJobStatus.Succeeded)
+                {
+                    return;
+                }
+            }
+
+            var interrupted = await store.InterruptAsync(
+                jobId,
+                executionToken,
+                "service_stopping",
+                "سرویس هنگام اجرای بکاپ متوقف شد.",
+                CancellationToken.None);
+
+            if (interrupted.Status is not BackupJobMutationStatus.Updated and not BackupJobMutationStatus.StateConflict)
+            {
+                logger.LogWarning(
+                    "Could not persist shutdown state for backup job {JobId}: {Status}.",
+                    jobId,
+                    interrupted.Status);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not finalize backup job {JobId} during service shutdown.", jobId);
         }
     }
 
