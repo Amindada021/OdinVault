@@ -2645,6 +2645,8 @@ internal sealed class MainForm : Form
             _settingLanguage.SelectedIndex == 1 ? "en" : "fa");
 
         _settingsStore.Save(_settings);
+        UiLayout.SetLanguage(_settings.Language);
+        ApplyLanguage();
         ApplyTheme();
 
         OdinDialog.Show(
