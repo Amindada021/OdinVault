@@ -60,6 +60,32 @@ internal sealed class AgentApiClient : IDisposable
                ?? [];
     }
 
+    public async Task<IReadOnlyList<DatabaseOverviewResponse>> GetDatabaseOverviewsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Get, "api/databases/overview");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<List<DatabaseOverviewResponse>>(
+                   JsonOptions,
+                   cancellationToken)
+               ?? [];
+    }
+
+    public async Task<DatabaseDetailsResponse?> GetDatabaseDetailsAsync(
+        Guid databaseId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Get,
+            $"api/databases/{databaseId}/details");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<DatabaseDetailsResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
     public async Task<DatabaseResponse?> GetDatabaseAsync(Guid databaseId, CancellationToken cancellationToken = default)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Get, $"api/databases/{databaseId}");
@@ -319,6 +345,72 @@ internal sealed record DashboardActivityResponse(
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
     string? Error);
+
+internal sealed record DatabaseOverviewResponse(
+    Guid Id,
+    string Name,
+    string Host,
+    int? Port,
+    string DatabaseName,
+    bool IsEnabled,
+    bool IsProtected,
+    DateTime? LatestBackupAtUtc,
+    int? LatestBackupStatus,
+    int? LatestVerificationStatus,
+    long? LatestBackupSizeBytes);
+
+internal sealed record DatabaseDetailsResponse(
+    DatabaseDetailsDatabaseResponse Database,
+    DatabaseProtectionResponse Protection,
+    IReadOnlyList<DatabaseBackupHistoryResponse> Backups,
+    IReadOnlyList<DatabaseReplicaHistoryResponse> Replicas);
+
+internal sealed record DatabaseDetailsDatabaseResponse(
+    Guid Id,
+    string Name,
+    string Host,
+    int? Port,
+    string DatabaseName,
+    bool IsEnabled,
+    DatabaseDetailsPolicyResponse? Policy);
+
+internal sealed record DatabaseDetailsPolicyResponse(
+    string? ScheduleCron,
+    int MaxLocalBackups,
+    bool VerifyAfterBackup,
+    string BackupDirectory,
+    bool IsEnabled);
+
+internal sealed record DatabaseProtectionResponse(
+    bool IsProtected,
+    DateTime? LatestBackupAtUtc,
+    int? LatestBackupStatus,
+    int? LatestVerificationStatus,
+    long? LatestBackupSizeBytes,
+    int LatestReplicaSucceeded,
+    int LatestReplicaTotal);
+
+internal sealed record DatabaseBackupHistoryResponse(
+    Guid Id,
+    int Status,
+    int VerificationStatus,
+    long? SizeBytes,
+    DateTime StartedAtUtc,
+    DateTime? CompletedAtUtc,
+    bool LocalFileAvailable,
+    string? Error);
+
+internal sealed record DatabaseReplicaHistoryResponse(
+    Guid BackupRecordId,
+    Guid StorageTargetId,
+    string Name,
+    int Type,
+    int Status,
+    long? SizeBytes,
+    string? ContentHashSha256,
+    string? Error,
+    DateTime StartedAtUtc,
+    DateTime? CompletedAtUtc);
 
 internal sealed record DatabaseResponse(
     Guid Id,
