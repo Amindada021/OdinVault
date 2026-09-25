@@ -94,6 +94,7 @@ public sealed class StorageReplicationService(
             replica.RemoteId = result.RemoteId;
             replica.RemotePath = result.RemotePath;
             replica.SizeBytes = result.SizeBytes;
+            replica.ContentHashSha256 = result.ContentHashSha256;
             replica.CompletedAtUtc = DateTime.UtcNow;
             replica.NextRetryAtUtc = null;
             await db.SaveChangesAsync(cancellationToken);

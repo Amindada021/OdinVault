@@ -114,6 +114,7 @@ public sealed class BackupReplica
     public string? RemoteId { get; set; }
     public string? RemotePath { get; set; }
     public long? SizeBytes { get; set; }
+    public string? ContentHashSha256 { get; set; }
     public string? Error { get; set; }
     public int RetryCount { get; set; }
     public DateTime? NextRetryAtUtc { get; set; }
@@ -162,7 +163,8 @@ public sealed record StorageUploadResult(
     string Provider,
     string RemoteId,
     string? RemotePath,
-    long SizeBytes);
+    long SizeBytes,
+    string? ContentHashSha256 = null);
 
 public interface IBackupStorageProvider
 {

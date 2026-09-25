@@ -66,6 +66,7 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.HasKey(x => x.Id);
             entity.Property(x => x.RemoteId).HasMaxLength(1000);
             entity.Property(x => x.RemotePath).HasMaxLength(2000);
+            entity.Property(x => x.ContentHashSha256).HasMaxLength(64);
             entity.Property(x => x.Error).HasMaxLength(4000);
             entity.HasIndex(x => new { x.BackupRecordId, x.StorageTargetId }).IsUnique();
             entity.HasIndex(x => new { x.StorageTargetId, x.StartedAtUtc });

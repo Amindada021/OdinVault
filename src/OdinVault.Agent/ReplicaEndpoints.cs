@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http.Features;
 using OdinVault.Core;
@@ -34,6 +36,7 @@ public static class ReplicaEndpoints
             string Header(string name) => encoded ? Uri.UnescapeDataString(request.Headers[name].ToString()) : request.Headers[name].ToString();
             var fileName = Path.GetFileName(Header("X-OdinVault-File-Name"));
             var expectedSizeText = request.Headers["X-OdinVault-File-Size"].ToString();
+            var expectedHash = request.Headers["X-OdinVault-SHA256"].ToString().Trim();
 
             if (string.IsNullOrWhiteSpace(backupId) || string.IsNullOrWhiteSpace(fileName))
                 return Results.BadRequest(new { message = "Replica metadata headers are required." });
@@ -50,26 +53,64 @@ public static class ReplicaEndpoints
             Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
             var partPath = finalPath + "." + Guid.NewGuid().ToString("N") + ".part";
 
+            if (!string.IsNullOrEmpty(expectedHash) &&
+                (expectedHash.Length != 64 || !expectedHash.All(Uri.IsHexDigit)))
+            {
+                return Results.BadRequest(new { message = "Invalid replica SHA256." });
+            }
+
             try
             {
-                await using (var output = new FileStream(
-                    partPath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    1024 * 1024,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                long actualSize = 0;
+                string actualHash;
+                using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                var buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+                try
                 {
-                    await request.Body.CopyToAsync(output, 1024 * 1024, ct);
+                    await using var output = new FileStream(
+                        partPath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.None,
+                        1024 * 1024,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+                    while (true)
+                    {
+                        var read = await request.Body.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+                        if (read == 0)
+                            break;
+
+                        await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                        hasher.AppendData(buffer, 0, read);
+                        actualSize += read;
+                    }
+
                     await output.FlushAsync(ct);
+                    actualHash = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
 
-                var actualSize = new FileInfo(partPath).Length;
                 if (actualSize != expectedSize)
                     throw new IOException($"Replica size mismatch. Expected {expectedSize}, received {actualSize}.");
 
+                if (!string.IsNullOrEmpty(expectedHash) &&
+                    !string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("Replica SHA256 mismatch.");
+                }
+
                 File.Move(partPath, finalPath, true);
-                return Results.Ok(new { id = finalName, path = finalPath, sizeBytes = actualSize });
+                return Results.Ok(new
+                {
+                    id = finalName,
+                    path = finalPath,
+                    sizeBytes = actualSize,
+                    sha256 = actualHash
+                });
             }
             catch
             {

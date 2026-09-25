@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using OdinVault.Core;
 
 namespace OdinVault.Agent;
@@ -19,6 +20,20 @@ public sealed class OdinVaultReplicaStorage(
         if (!fileInfo.Exists)
             throw new FileNotFoundException("Backup file was not found.", request.LocalPath);
 
+        string contentHash;
+        await using (var hashStream = new FileStream(
+            request.LocalPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        {
+            contentHash = Convert.ToHexString(
+                await SHA256.HashDataAsync(hashStream, cancellationToken))
+                .ToLowerInvariant();
+        }
+
         using var message = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/replica/backups");
         message.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
         message.Headers.TryAddWithoutValidation("X-OdinVault-Backup-Id", request.BackupRecordId.ToString());
@@ -27,6 +42,7 @@ public sealed class OdinVaultReplicaStorage(
         message.Headers.TryAddWithoutValidation("X-OdinVault-Database", Uri.EscapeDataString(request.DatabaseName ?? "database"));
         message.Headers.TryAddWithoutValidation("X-OdinVault-Source", Uri.EscapeDataString(request.SourceName ?? "server"));
         message.Headers.TryAddWithoutValidation("X-OdinVault-File-Size", fileInfo.Length.ToString());
+        message.Headers.TryAddWithoutValidation("X-OdinVault-SHA256", contentHash);
 
         await using var stream = new FileStream(
             request.LocalPath,
@@ -54,11 +70,15 @@ public sealed class OdinVaultReplicaStorage(
         var result = await response.Content.ReadFromJsonAsync<ReplicaUploadResponse>(cancellationToken: cancellationToken)
             ?? throw new IOException("Replica Agent returned an empty response.");
 
+        if (!string.Equals(result.Sha256, contentHash, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Replica Agent returned a content hash that does not match the source backup.");
+
         return new StorageUploadResult(
             "odinvault-replica",
             result.Id,
             result.Path,
-            result.SizeBytes);
+            result.SizeBytes,
+            result.Sha256);
     }
 
     public async Task DownloadToAsync(string remoteId, Stream destination, CancellationToken cancellationToken = default)
@@ -79,5 +99,5 @@ public sealed class OdinVaultReplicaStorage(
         response.EnsureSuccessStatusCode();
     }
 
-    private sealed record ReplicaUploadResponse(string Id, string Path, long SizeBytes);
+    private sealed record ReplicaUploadResponse(string Id, string Path, long SizeBytes, string Sha256);
 }

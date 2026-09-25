@@ -161,10 +161,39 @@ public sealed class BackupOrchestrator(
             .Skip(maxBackups)
             .ToListAsync(cancellationToken);
 
+        var requiredTargetIds = await (
+            from link in db.DatabaseStorageTargets
+            join target in db.StorageTargets on link.StorageTargetId equals target.Id
+            where link.DatabaseEndpointId == databaseId &&
+                  link.IsEnabled &&
+                  target.IsEnabled
+            select target.Id)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
         foreach (var old in oldRecords)
         {
-            if (await db.BackupReplicas.AnyAsync(x => x.BackupRecordId == old.Id && x.Status != ReplicaStatus.Succeeded, cancellationToken))
-                continue;
+            if (requiredTargetIds.Count > 0)
+            {
+                var successfulTargetIds = await db.BackupReplicas
+                    .Where(x => x.BackupRecordId == old.Id &&
+                                x.Status == ReplicaStatus.Succeeded &&
+                                requiredTargetIds.Contains(x.StorageTargetId))
+                    .Select(x => x.StorageTargetId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+
+                if (successfulTargetIds.Count != requiredTargetIds.Count)
+                {
+                    logger.LogWarning(
+                        "Retention kept local backup {BackupId} because only {SucceededTargets}/{RequiredTargets} required replicas succeeded.",
+                        old.Id,
+                        successfulTargetIds.Count,
+                        requiredTargetIds.Count);
+                    continue;
+                }
+            }
+
             try
             {
                 if (!string.IsNullOrWhiteSpace(old.FilePath) && File.Exists(old.FilePath))
