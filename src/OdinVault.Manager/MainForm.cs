@@ -19,6 +19,13 @@ internal sealed class MainForm : Form
     private readonly Panel _contentHost = new();
     private readonly Label _pageTitle = new();
     private readonly Dictionary<string, Button> _navigationButtons = new(StringComparer.Ordinal);
+    private readonly Label _protectedValue = new();
+    private readonly Label _failedValue = new();
+    private readonly Label _activeJobsValue = new();
+    private readonly Label _storageValue = new();
+    private readonly FlowLayoutPanel _attentionList = new();
+    private readonly FlowLayoutPanel _activityList = new();
+    private Control? _dashboardPage;
     private Control? _databasesPage;
 
     public MainForm()
@@ -263,9 +270,8 @@ internal sealed class MainForm : Form
                     break;
                 case "dashboard":
                     _pageTitle.Text = "داشبورد";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "داشبورد OdinVault",
-                        "در مرحله بعد کارت‌های وضعیت، هشدارهای مهم و نمودارهای بکاپ اینجا قرار می‌گیرند."));
+                    _dashboardPage ??= BuildDashboardPage();
+                    _contentHost.Controls.Add(_dashboardPage);
                     break;
                 case "backups":
                     _pageTitle.Text = "بکاپ‌ها";
@@ -309,6 +315,261 @@ internal sealed class MainForm : Form
         {
             _contentHost.ResumeLayout();
         }
+    }
+
+    private Control BuildDashboardPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var kpis = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, 16),
+            Padding = Padding.Empty
+        };
+        for (var i = 0; i < 4; i++)
+            kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        kpis.Controls.Add(BuildKpiCard("دیتابیس‌های محافظت‌شده", _protectedValue, "از کل دیتابیس‌های فعال"), 0, 0);
+        kpis.Controls.Add(BuildKpiCard("خطاهای ۲۴ ساعت اخیر", _failedValue, "Job ناموفق یا متوقف‌شده"), 1, 0);
+        kpis.Controls.Add(BuildKpiCard("Jobهای فعال", _activeJobsValue, "در صف یا در حال اجرا"), 2, 0);
+        kpis.Controls.Add(BuildKpiCard("فضای آزاد بکاپ", _storageValue, "فضای مقصد محلی Agent"), 3, 0);
+        root.Controls.Add(kpis, 0, 0);
+
+        var lower = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        lower.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
+        lower.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+
+        _attentionList.Dock = DockStyle.Fill;
+        _attentionList.FlowDirection = FlowDirection.TopDown;
+        _attentionList.WrapContents = false;
+        _attentionList.AutoScroll = true;
+        _attentionList.Padding = new Padding(10);
+
+        _activityList.Dock = DockStyle.Fill;
+        _activityList.FlowDirection = FlowDirection.TopDown;
+        _activityList.WrapContents = false;
+        _activityList.AutoScroll = true;
+        _activityList.Padding = new Padding(10);
+
+        lower.Controls.Add(BuildDashboardSection("نیازمند توجه", _attentionList), 0, 0);
+        lower.Controls.Add(BuildDashboardSection("فعالیت‌های اخیر", _activityList), 1, 0);
+        root.Controls.Add(lower, 0, 1);
+
+        RenderEmptyList(_attentionList, "در حال دریافت وضعیت...");
+        RenderEmptyList(_activityList, "در حال دریافت فعالیت‌ها...");
+        return root;
+    }
+
+    private Control BuildKpiCard(string title, Label value, string subtitle)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(6),
+            Padding = new Padding(16, 12, 16, 12),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+
+        card.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(95, 105, 120),
+            Font = new Font(Font.FontFamily, 9F, FontStyle.Bold)
+        }, 0, 0);
+
+        value.Text = "—";
+        value.Dock = DockStyle.Fill;
+        value.TextAlign = ContentAlignment.MiddleRight;
+        value.Font = new Font(Font.FontFamily, 23F, FontStyle.Bold);
+        value.ForeColor = Color.FromArgb(35, 45, 60);
+        card.Controls.Add(value, 0, 1);
+
+        card.Controls.Add(new Label
+        {
+            Text = subtitle,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(130, 140, 155),
+            Font = new Font(Font.FontFamily, 8.5F)
+        }, 0, 2);
+
+        return card;
+    }
+
+    private Control BuildDashboardSection(string title, Control content)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(6),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        card.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(14, 0, 14, 0),
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 11F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(45, 55, 70)
+        }, 0, 0);
+
+        card.Controls.Add(content, 0, 1);
+        return card;
+    }
+
+    private void RenderDashboard(DashboardResponse dashboard)
+    {
+        _protectedValue.Text = $"{dashboard.ProtectedDatabases} / {dashboard.EnabledDatabases}";
+        _failedValue.Text = dashboard.FailedJobsLast24Hours.ToString();
+        _activeJobsValue.Text = dashboard.ActiveJobs.ToString();
+        _storageValue.Text = FormatBytes(dashboard.StorageFreeBytes);
+
+        _attentionList.SuspendLayout();
+        _attentionList.Controls.Clear();
+        if (dashboard.Attention.Count == 0)
+        {
+            RenderEmptyList(_attentionList, "مورد مهمی نیازمند توجه نیست.");
+        }
+        else
+        {
+            foreach (var item in dashboard.Attention)
+                _attentionList.Controls.Add(BuildAttentionRow(item));
+        }
+        _attentionList.ResumeLayout();
+
+        _activityList.SuspendLayout();
+        _activityList.Controls.Clear();
+        if (dashboard.RecentActivity.Count == 0)
+        {
+            RenderEmptyList(_activityList, "هنوز سابقه بکاپی ثبت نشده است.");
+        }
+        else
+        {
+            foreach (var item in dashboard.RecentActivity)
+                _activityList.Controls.Add(BuildActivityRow(item));
+        }
+        _activityList.ResumeLayout();
+    }
+
+    private Control BuildAttentionRow(DashboardAttentionResponse item)
+    {
+        var critical = string.Equals(item.Severity, "critical", StringComparison.OrdinalIgnoreCase);
+        var panel = new Panel
+        {
+            Width = Math.Max(320, _attentionList.ClientSize.Width - 32),
+            Height = 82,
+            Margin = new Padding(2, 2, 2, 8),
+            Padding = new Padding(12),
+            BackColor = critical
+                ? Color.FromArgb(255, 244, 244)
+                : Color.FromArgb(255, 249, 235),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        panel.Controls.Add(new Label
+        {
+            Text = $"{(critical ? "●" : "▲")} {item.DatabaseName} — {item.Title}\r\n{item.Message}",
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = critical ? Color.FromArgb(150, 45, 45) : Color.FromArgb(140, 95, 25)
+        });
+        return panel;
+    }
+
+    private Control BuildActivityRow(DashboardActivityResponse item)
+    {
+        var succeeded = item.Status == 2;
+        var verifyFailed = item.VerificationStatus == 3;
+        var statusText = succeeded
+            ? verifyFailed ? "موفق؛ Verify ناموفق" : "موفق"
+            : item.Status == 3 ? "ناموفق" : "در حال انجام";
+
+        var panel = new Panel
+        {
+            Width = Math.Max(300, _activityList.ClientSize.Width - 32),
+            Height = 70,
+            Margin = new Padding(2, 2, 2, 8),
+            Padding = new Padding(12),
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        panel.Controls.Add(new Label
+        {
+            Text = $"{item.DatabaseName}   •   {statusText}\r\n{FormatBytes(item.SizeBytes)}   •   {FormatDashboardTime(item.CompletedAtUtc ?? item.StartedAtUtc)}",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(55, 65, 80)
+        });
+        return panel;
+    }
+
+    private static void RenderEmptyList(Control host, string text)
+    {
+        host.Controls.Add(new Label
+        {
+            Text = text,
+            Width = 420,
+            Height = 56,
+            Margin = new Padding(6),
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(125, 135, 150)
+        });
+    }
+
+    private static string FormatBytes(long? value)
+    {
+        if (value is null)
+            return "نامشخص";
+
+        var bytes = value.Value;
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024d:0.0} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024d * 1024):0.0} MB";
+        return $"{bytes / (1024d * 1024 * 1024):0.00} GB";
+    }
+
+    private static string FormatDashboardTime(DateTime utc)
+    {
+        var local = utc.Kind == DateTimeKind.Utc ? utc.ToLocalTime() : utc;
+        return local.ToString("yyyy/MM/dd HH:mm");
     }
 
     private Control BuildPlaceholderPage(string title, string description)
@@ -473,12 +734,23 @@ internal sealed class MainForm : Form
         SetBusy(true);
         try
         {
-            var health = await _api.GetHealthAsync();
-            _agentStatus.Text = health?.Status?.Equals("healthy", StringComparison.OrdinalIgnoreCase) == true
-                ? "● Agent فعال است"
-                : "● Agent پاسخ می‌دهد";
+            var dashboardTask = _api.GetDashboardAsync();
+            var databasesTask = _api.GetDatabasesAsync();
+            await Task.WhenAll(dashboardTask, databasesTask);
 
-            var databases = await _api.GetDatabasesAsync();
+            var dashboard = await dashboardTask;
+            if (dashboard is not null)
+            {
+                _agentStatus.Text = dashboard.Status.Equals("healthy", StringComparison.OrdinalIgnoreCase)
+                    ? dashboard.ProtectionStatus.Equals("healthy", StringComparison.OrdinalIgnoreCase)
+                        ? "● Agent فعال • حفاظت سالم"
+                        : "● Agent فعال • نیاز به بررسی"
+                    : "● Agent مشکل دارد";
+
+                RenderDashboard(dashboard);
+            }
+
+            var databases = await databasesTask;
             _grid.Rows.Clear();
 
             foreach (var db in databases)
