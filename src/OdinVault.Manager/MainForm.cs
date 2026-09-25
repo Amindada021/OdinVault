@@ -37,7 +37,17 @@ internal sealed class MainForm : Form
     private Control? _storagePage;
     private Control? _restorePage;
     private Control? _alertsPage;
+    private Control? _reportsPage;
     private Guid? _currentDetailsDatabaseId;
+    private readonly ComboBox _reportRange = new();
+    private readonly Label _reportSuccessRate = new();
+    private readonly Label _reportFailureCount = new();
+    private readonly Label _reportAverageDuration = new();
+    private readonly Label _reportProtected = new();
+    private readonly BackupChartControl _reportStatusChart = new();
+    private readonly BackupChartControl _reportSizeChart = new();
+    private readonly DataGridView _reportDatabaseGrid = new();
+    private BackupReportResponse? _backupReport;
     private readonly DataGridView _alertsGrid = new();
     private readonly ComboBox _alertReadFilter = new();
     private readonly ComboBox _alertSeverityFilter = new();
@@ -323,9 +333,9 @@ internal sealed class MainForm : Form
                     break;
                 case "reports":
                     _pageTitle.Text = "گزارش‌ها";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "گزارش‌ها",
-                        "تحلیل روند حجم، زمان و موفقیت بکاپ‌ها در مرحله Charts/Reports اضافه می‌شود."));
+                    _reportsPage ??= BuildReportsPage();
+                    _contentHost.Controls.Add(_reportsPage);
+                    _ = RefreshReportsPageAsync();
                     break;
                 default:
                     _pageTitle.Text = "تنظیمات";
@@ -1695,6 +1705,282 @@ internal sealed class MainForm : Form
         "storage" => "فضا",
         "health" => "Agent",
         _ => category
+    };
+
+    private Control BuildReportsPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 320));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(4)
+        };
+
+        var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 36 };
+        refresh.Click += async (_, _) => await RefreshReportsPageAsync();
+
+        var export = new Button { Text = "خروجی CSV برای Excel", AutoSize = true, Height = 36 };
+        export.Click += (_, _) => ExportBackupReportCsv();
+
+        _reportRange.DropDownStyle = ComboBoxStyle.DropDownList;
+        _reportRange.Width = 130;
+        _reportRange.Items.AddRange(["۷ روز", "۳۰ روز", "۹۰ روز"]);
+        _reportRange.SelectedIndex = 1;
+        _reportRange.SelectedIndexChanged += async (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+                await RefreshReportsPageAsync();
+        };
+
+        toolbar.Controls.Add(refresh);
+        toolbar.Controls.Add(export);
+        toolbar.Controls.Add(_reportRange);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "بازه گزارش",
+            AutoSize = true,
+            Margin = new Padding(8, 9, 3, 0)
+        });
+        root.Controls.Add(toolbar, 0, 0);
+
+        var kpis = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, 14)
+        };
+        for (var i = 0; i < 4; i++)
+            kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        kpis.Controls.Add(BuildKpiCard("نرخ موفقیت", _reportSuccessRate, "در بازه انتخاب‌شده"), 0, 0);
+        kpis.Controls.Add(BuildKpiCard("بکاپ ناموفق", _reportFailureCount, "تعداد Failure"), 1, 0);
+        kpis.Controls.Add(BuildKpiCard("میانگین مدت", _reportAverageDuration, "Backupهای موفق"), 2, 0);
+        kpis.Controls.Add(BuildKpiCard("دیتابیس محافظت‌شده", _reportProtected, "از کل دیتابیس فعال"), 3, 0);
+        root.Controls.Add(kpis, 0, 1);
+
+        _reportStatusChart.ChartTitle = "روند موفق / ناموفق / Verify ناموفق";
+        _reportStatusChart.Kind = BackupChartKind.Bar;
+        _reportStatusChart.ValueFormatter = value => value.ToString("0");
+        _reportStatusChart.Margin = new Padding(6);
+
+        _reportSizeChart.ChartTitle = "حجم بکاپ‌های موفق";
+        _reportSizeChart.Kind = BackupChartKind.Line;
+        _reportSizeChart.ValueFormatter = value => FormatBytes((long)value);
+        _reportSizeChart.Margin = new Padding(6);
+
+        var charts = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty
+        };
+        charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        charts.Controls.Add(_reportStatusChart, 0, 0);
+        charts.Controls.Add(_reportSizeChart, 1, 0);
+        root.Controls.Add(charts, 0, 2);
+
+        ConfigureReadOnlyGrid(_reportDatabaseGrid);
+        _reportDatabaseGrid.Columns.Clear();
+        _reportDatabaseGrid.Columns.Add("Database", "دیتابیس");
+        _reportDatabaseGrid.Columns.Add("State", "وضعیت");
+        _reportDatabaseGrid.Columns.Add("SuccessRate", "نرخ موفقیت");
+        _reportDatabaseGrid.Columns.Add("Succeeded", "موفق");
+        _reportDatabaseGrid.Columns.Add("Failed", "ناموفق");
+        _reportDatabaseGrid.Columns.Add("Verify", "Verify ناموفق");
+        _reportDatabaseGrid.Columns.Add("Replica", "Replica ناموفق");
+        _reportDatabaseGrid.Columns.Add("AverageDuration", "میانگین مدت");
+        _reportDatabaseGrid.Columns.Add("LatestSize", "آخرین حجم");
+        _reportDatabaseGrid.Columns.Add("Growth", "رشد حجم");
+        _reportDatabaseGrid.Columns.Add("LatestBackup", "آخرین بکاپ");
+
+        _reportDatabaseGrid.CellDoubleClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && _reportDatabaseGrid.Rows[e.RowIndex].Tag is Guid databaseId)
+                await ShowDatabaseDetailsAsync(databaseId);
+        };
+
+        root.Controls.Add(BuildBackupsSection("گزارش دیتابیس‌ها", _reportDatabaseGrid), 0, 3);
+        return root;
+    }
+
+    private async Task RefreshReportsPageAsync()
+    {
+        try
+        {
+            var days = _reportRange.SelectedIndex switch
+            {
+                0 => 7,
+                2 => 90,
+                _ => 30
+            };
+
+            _backupReport = await _api.GetBackupReportAsync(days);
+            if (_backupReport is null)
+                return;
+
+            RenderBackupReport(_backupReport);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void RenderBackupReport(BackupReportResponse report)
+    {
+        _reportSuccessRate.Text = report.Summary.SuccessRate.HasValue
+            ? $"{report.Summary.SuccessRate.Value:0.0}٪"
+            : "—";
+        _reportFailureCount.Text = report.Summary.Failed.ToString();
+        _reportAverageDuration.Text = report.Summary.AverageDurationSeconds.HasValue
+            ? FormatDurationAxis(report.Summary.AverageDurationSeconds.Value)
+            : "—";
+        _reportProtected.Text =
+            $"{report.Summary.ProtectedDatabases} / {report.Summary.EnabledDatabases}";
+
+        var labels = report.Daily
+            .Select(x => FormatChartDate(x.DateUtc))
+            .ToArray();
+
+        _reportStatusChart.SetData(
+            labels,
+            new BackupChartSeries("موفق", report.Daily.Select(x => (double?)x.Succeeded).ToArray()),
+            new BackupChartSeries("ناموفق", report.Daily.Select(x => (double?)x.Failed).ToArray()),
+            new BackupChartSeries("Verify", report.Daily.Select(x => (double?)x.VerifyFailed).ToArray()));
+
+        _reportSizeChart.SetData(
+            labels,
+            new BackupChartSeries(
+                "حجم",
+                report.Daily.Select(x => (double?)x.TotalSizeBytes).ToArray()));
+
+        _reportDatabaseGrid.Rows.Clear();
+        foreach (var row in report.Databases)
+        {
+            var rowIndex = _reportDatabaseGrid.Rows.Add(
+                row.DatabaseName,
+                FormatReportSeverity(row.Severity),
+                row.SuccessRate.HasValue ? $"{row.SuccessRate.Value:0.0}٪" : "—",
+                row.Succeeded,
+                row.Failed,
+                row.VerifyFailed,
+                row.ReplicaFailed,
+                row.AverageDurationSeconds.HasValue
+                    ? FormatDurationAxis(row.AverageDurationSeconds.Value)
+                    : "—",
+                FormatBytes(row.LatestSizeBytes),
+                row.SizeGrowthPercent.HasValue
+                    ? $"{row.SizeGrowthPercent.Value:+0.0;-0.0;0.0}٪"
+                    : "—",
+                row.LatestBackupAtUtc.HasValue
+                    ? FormatDashboardTime(row.LatestBackupAtUtc.Value)
+                    : "—");
+
+            var gridRow = _reportDatabaseGrid.Rows[rowIndex];
+            gridRow.Tag = row.DatabaseId;
+
+            gridRow.DefaultCellStyle.ForeColor = row.Severity switch
+            {
+                "critical" => Color.FromArgb(155, 50, 50),
+                "warning" => Color.FromArgb(145, 95, 25),
+                _ => Color.FromArgb(55, 65, 80)
+            };
+        }
+    }
+
+    private void ExportBackupReportCsv()
+    {
+        if (_backupReport is null)
+        {
+            MessageBox.Show(
+                this,
+                "ابتدا گزارش را دریافت کنید.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new SaveFileDialog
+        {
+            Title = "ذخیره گزارش OdinVault",
+            Filter = "CSV (Excel)|*.csv",
+            FileName = $"OdinVault-Backup-Report-{DateTime.Now:yyyyMMdd-HHmm}.csv",
+            AddExtension = true,
+            DefaultExt = "csv"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var lines = new List<string>
+        {
+            "دیتابیس,وضعیت,کل بکاپ,موفق,ناموفق,Verify ناموفق,Replica ناموفق,نرخ موفقیت,میانگین مدت ثانیه,آخرین حجم بایت,حجم قبلی بایت,درصد رشد حجم,آخرین بکاپ"
+        };
+
+        foreach (var row in _backupReport.Databases)
+        {
+            lines.Add(string.Join(",",
+                Csv(row.DatabaseName),
+                Csv(FormatReportSeverity(row.Severity)),
+                row.TotalBackups,
+                row.Succeeded,
+                row.Failed,
+                row.VerifyFailed,
+                row.ReplicaFailed,
+                row.SuccessRate?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                row.AverageDurationSeconds?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                row.LatestSizeBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                row.PreviousSizeBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                row.SizeGrowthPercent?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                Csv(row.LatestBackupAtUtc.HasValue
+                    ? FormatDashboardTime(row.LatestBackupAtUtc.Value)
+                    : string.Empty)));
+        }
+
+        File.WriteAllText(
+            dialog.FileName,
+            string.Join(Environment.NewLine, lines),
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        MessageBox.Show(
+            this,
+            "گزارش CSV ذخیره شد و با Excel قابل باز شدن است.",
+            "OdinVault",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    private static string Csv(string value)
+    {
+        var normalized = value.Replace(""", """");
+        return $""{normalized}"";
+    }
+
+    private static string FormatReportSeverity(string severity) => severity switch
+    {
+        "critical" => "بحرانی",
+        "warning" => "نیاز به بررسی",
+        _ => "سالم"
     };
 
     private Control BuildPlaceholderPage(string title, string description)
