@@ -10,6 +10,8 @@ internal sealed class MainForm : Form
     private readonly Button _refreshButton = new();
     private readonly Button _addButton = new();
     private readonly Button _discoverButton = new();
+    private readonly Button _editButton = new();
+    private readonly Button _deleteButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
     private readonly Button _updateButton = new();
@@ -96,11 +98,13 @@ internal sealed class MainForm : Form
         ConfigureButton(_refreshButton, "بروزرسانی", async (_, _) => await RefreshAllAsync());
         ConfigureButton(_addButton, "افزودن دستی", async (_, _) => await AddDatabaseAsync());
         ConfigureButton(_discoverButton, "شناسایی دیتابیس‌های سرور", async (_, _) => await DiscoverDatabasesAsync());
+        ConfigureButton(_editButton, "ویرایش", async (_, _) => await EditSelectedAsync());
+        ConfigureButton(_deleteButton, "حذف", async (_, _) => await DeleteSelectedAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ انتخاب‌شده‌ها", async (_, _) => await BackupSelectedAsync());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
-        actions.Controls.AddRange([_backupButton, _testButton, _discoverButton, _addButton, _refreshButton, _updateButton]);
+        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
@@ -247,6 +251,95 @@ internal sealed class MainForm : Form
 
         if (dialog.AnyAdded)
             await RefreshAllAsync();
+    }
+
+    private async Task EditSelectedAsync()
+    {
+        if (!TryGetSelectedDatabaseId(out var id))
+            return;
+
+        SetBusy(true);
+        DatabaseResponse? database;
+        try
+        {
+            database = await _api.GetDatabaseAsync(id);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            return;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+
+        if (database is null)
+            return;
+
+        using var dialog = new EditDatabaseForm(database);
+        if (dialog.ShowDialog(this) != DialogResult.OK ||
+            dialog.DatabaseRequest is null ||
+            dialog.PolicyRequest is null)
+            return;
+
+        SetBusy(true);
+        try
+        {
+            await _api.UpdateDatabaseAsync(id, dialog.DatabaseRequest);
+            await _api.UpdateBackupPolicyAsync(id, dialog.PolicyRequest);
+            await RefreshAllAsync();
+
+            MessageBox.Show(
+                this,
+                "تنظیمات دیتابیس با موفقیت بروزرسانی شد.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (!TryGetSelectedDatabaseId(out var id))
+            return;
+
+        var row = _grid.SelectedRows.Count == 1 ? _grid.SelectedRows[0] : _grid.CurrentRow;
+        var name = row is null ? "این دیتابیس" : Convert.ToString(row.Cells["Name"].Value) ?? "این دیتابیس";
+
+        var answer = MessageBox.Show(
+            this,
+            $"«{name}» از OdinVault حذف شود؟{Environment.NewLine}{Environment.NewLine}" +
+            "تنظیمات و تاریخچه OdinVault حذف می‌شود، اما فایل‌های بکاپ موجود روی دیسک نگه داشته می‌شوند.",
+            "حذف دیتابیس",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (answer != DialogResult.Yes)
+            return;
+
+        SetBusy(true);
+        try
+        {
+            await _api.DeleteDatabaseAsync(id, deleteHistory: true, deleteFiles: false);
+            await RefreshAllAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private async Task TestSelectedAsync()
@@ -436,6 +529,8 @@ internal sealed class MainForm : Form
         _refreshButton.Enabled = !busy;
         _addButton.Enabled = !busy;
         _discoverButton.Enabled = !busy;
+        _editButton.Enabled = !busy;
+        _deleteButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
         _updateButton.Enabled = !busy;
@@ -450,6 +545,181 @@ internal sealed class MainForm : Form
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
     }
+}
+
+internal sealed class EditDatabaseForm : Form
+{
+    private readonly TextBox _name = new();
+    private readonly TextBox _host = new();
+    private readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535 };
+    private readonly TextBox _database = new();
+    private readonly TextBox _username = new();
+    private readonly TextBox _password = new() { UseSystemPasswordChar = true };
+    private readonly CheckBox _clearPassword = new() { Text = "حذف رمز ذخیره‌شده", AutoSize = true };
+    private readonly TextBox _backupDirectory = new();
+    private readonly NumericUpDown _maxBackups = new() { Minimum = 1, Maximum = 1000 };
+    private readonly TextBox _cron = new();
+    private readonly CheckBox _trustCertificate = new() { Text = "Trust Server Certificate", AutoSize = true };
+    private readonly CheckBox _verify = new() { Text = "Verify بعد از بکاپ", AutoSize = true };
+    private readonly CheckBox _enabled = new() { Text = "فعال", AutoSize = true };
+
+    public UpdateDatabaseRequest? DatabaseRequest { get; private set; }
+    public UpdateBackupPolicyRequest? PolicyRequest { get; private set; }
+
+    public EditDatabaseForm(DatabaseResponse database)
+    {
+        Text = $"ویرایش {database.Name}";
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ClientSize = new Size(620, 660);
+        Font = new Font("Segoe UI", 10F);
+        RightToLeft = RightToLeft.Yes;
+        RightToLeftLayout = true;
+
+        _name.Text = database.Name;
+        _host.Text = database.Host;
+        _port.Value = Math.Clamp(database.Port ?? 1433, 1, 65535);
+        _database.Text = database.DatabaseName;
+        _username.Text = database.Username;
+        _trustCertificate.Checked = database.TrustServerCertificate;
+        _enabled.Checked = database.IsEnabled;
+
+        if (database.Policy is not null)
+        {
+            _backupDirectory.Text = database.Policy.BackupDirectory;
+            _maxBackups.Value = Math.Clamp(database.Policy.MaxLocalBackups, 1, 1000);
+            _verify.Checked = database.Policy.VerifyAfterBackup;
+            _cron.Text = database.Policy.ScheduleCron ?? string.Empty;
+        }
+        else
+        {
+            _backupDirectory.Text = @"D:\Backups\OdinVault";
+            _maxBackups.Value = 7;
+            _verify.Checked = true;
+        }
+
+        BuildUi(database.HasPassword);
+    }
+
+    private void BuildUi(bool hasPassword)
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(18),
+            ColumnCount = 2,
+            RowCount = 14
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        AddField(panel, 0, "نام نمایشی", _name);
+        AddField(panel, 1, "SQL Server", _host);
+        AddField(panel, 2, "Port", _port);
+        AddField(panel, 3, "نام دیتابیس", _database);
+        AddField(panel, 4, "Username", _username);
+        AddField(panel, 5, hasPassword ? "Password (خالی = بدون تغییر)" : "Password", _password);
+        AddField(panel, 6, "مسیر بکاپ", _backupDirectory);
+        AddField(panel, 7, "تعداد نگهداری", _maxBackups);
+        AddField(panel, 8, "Cron (UTC)", _cron);
+
+        var checks = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            AutoSize = true
+        };
+        checks.Controls.AddRange([_enabled, _verify, _trustCertificate, _clearPassword]);
+        panel.Controls.Add(checks, 0, 9);
+        panel.SetColumnSpan(checks, 2);
+
+        var note = new Label
+        {
+            Text = "برای زمان‌بندی، Cron استاندارد UTC وارد کنید؛ خالی یعنی دستی. مثال هر شب ساعت 02:00 UTC: 0 2 * * *",
+            AutoSize = true,
+            MaximumSize = new Size(560, 0),
+            ForeColor = SystemColors.GrayText
+        };
+        panel.Controls.Add(note, 0, 10);
+        panel.SetColumnSpan(note, 2);
+
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true
+        };
+        var cancel = new Button { Text = "انصراف", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var save = new Button { Text = "ذخیره تغییرات", AutoSize = true };
+        save.Click += SaveClicked;
+
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(save);
+        panel.Controls.Add(buttons, 0, 13);
+        panel.SetColumnSpan(buttons, 2);
+
+        AcceptButton = save;
+        CancelButton = cancel;
+        Controls.Add(panel);
+    }
+
+    private void SaveClicked(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_name.Text) ||
+            string.IsNullOrWhiteSpace(_host.Text) ||
+            string.IsNullOrWhiteSpace(_database.Text) ||
+            string.IsNullOrWhiteSpace(_backupDirectory.Text))
+        {
+            MessageBox.Show(
+                this,
+                "نام، سرور، نام دیتابیس و مسیر بکاپ الزامی است.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        DatabaseRequest = new UpdateDatabaseRequest(
+            _name.Text.Trim(),
+            _host.Text.Trim(),
+            (int)_port.Value,
+            _database.Text.Trim(),
+            NullIfWhiteSpace(_username.Text),
+            string.IsNullOrWhiteSpace(_password.Text) ? null : _password.Text,
+            _clearPassword.Checked,
+            _trustCertificate.Checked,
+            _enabled.Checked);
+
+        PolicyRequest = new UpdateBackupPolicyRequest(
+            _backupDirectory.Text.Trim(),
+            (int)_maxBackups.Value,
+            _verify.Checked,
+            NullIfWhiteSpace(_cron.Text),
+            _enabled.Checked);
+
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
+    private static void AddField(TableLayoutPanel panel, int row, string label, Control control)
+    {
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        var caption = new Label
+        {
+            Text = label,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            AutoSize = true
+        };
+        control.Dock = DockStyle.Fill;
+        panel.Controls.Add(caption, 0, row);
+        panel.Controls.Add(control, 1, row);
+    }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 internal sealed class AddDatabaseForm : Form
