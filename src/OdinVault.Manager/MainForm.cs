@@ -2848,12 +2848,27 @@ internal sealed class MainForm : Form
         }
 
         _agentStatus.Text = UiText.Get("agent.checking", _settings.Language);
-        ApplyDirectionRecursive(this, UiText.IsPersian(_settings.Language));
+
+        if (_settingLanguage.Items.Count > 0)
+        {
+            var selectedLanguage = UiText.IsPersian(_settings.Language) ? 0 : 1;
+            _settingLanguage.Items.Clear();
+            _settingLanguage.Items.AddRange([
+                UiText.Get("settings.language.fa", _settings.Language),
+                UiText.Get("settings.language.en", _settings.Language)
+            ]);
+            _settingLanguage.SelectedIndex = selectedLanguage;
+        }
+
+        ApplyDirectionRecursive(this, UiText.IsPersian(_settings.Language), _settings.Language);
         ShowPage(_currentPageKey);
     }
 
-    private static void ApplyDirectionRecursive(Control control, bool rtl)
+    private static void ApplyDirectionRecursive(Control control, bool rtl, string language)
     {
+        if (control is not TextBoxBase and not ComboBox)
+            control.Text = UiText.TranslateLiteral(control.Text, language);
+
         if (control is TextBoxBase or ComboBox)
         {
             // Technical fields explicitly configured as LTR keep their direction.
@@ -2869,7 +2884,7 @@ internal sealed class MainForm : Form
             grid.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
 
         foreach (Control child in control.Controls)
-            ApplyDirectionRecursive(child, rtl);
+            ApplyDirectionRecursive(child, rtl, language);
     }
 
     private void ApplyTheme()
