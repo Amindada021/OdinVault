@@ -96,6 +96,8 @@ internal sealed class OdinDialog : Form
         Controls.Add(root);
 
         Shown += (_, _) => Win11Backdrop.TryApply(this, transient: true, dark: palette.Dark);
+    
+        UiLayout.Apply(this);
     }
 
     public static DialogResult Show(
