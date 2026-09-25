@@ -231,6 +231,8 @@ public static class BackupJobEndpoints
 
             if (enqueue.Status == BackupJobEnqueueStatus.RequestConflict)
                 return Results.Conflict(new { message = "شناسه درخواست قبلاً برای دیتابیس دیگری استفاده شده است." });
+            if (enqueue.Status == BackupJobEnqueueStatus.QueueFull)
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
             var job = enqueue.Job;
             if (job is null)

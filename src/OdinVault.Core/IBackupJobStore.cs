@@ -5,7 +5,8 @@ public enum BackupJobEnqueueStatus
     Created,
     Existing,
     ActiveConflict,
-    RequestConflict
+    RequestConflict,
+    QueueFull
 }
 
 public enum BackupJobMutationStatus

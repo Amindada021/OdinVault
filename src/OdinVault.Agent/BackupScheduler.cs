@@ -127,6 +127,14 @@ public sealed class BackupScheduler(
             return;
         }
 
+        if (enqueue.Status == BackupJobEnqueueStatus.QueueFull)
+        {
+            logger.LogWarning(
+                "Scheduled backup for database {DatabaseId} remains due because the durable queue is full.",
+                policy.DatabaseEndpointId);
+            return;
+        }
+
         if (enqueue.Job is null)
         {
             logger.LogError(

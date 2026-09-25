@@ -1,14 +1,19 @@
 using System.Collections.Concurrent;
+using OdinVault.Core;
 
 namespace OdinVault.Agent;
 
 public sealed class BackupExecutionCoordinator
 {
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> locks =
+        new(StringComparer.Ordinal);
 
-    public async Task<IAsyncDisposable?> TryAcquireAsync(Guid databaseId, CancellationToken cancellationToken = default)
+    public async Task<IAsyncDisposable?> TryAcquireAsync(
+        DatabaseEndpoint endpoint,
+        CancellationToken cancellationToken = default)
     {
-        var gate = _locks.GetOrAdd(databaseId, static _ => new SemaphoreSlim(1, 1));
+        var identity = DatabaseIdentity.Create(endpoint);
+        var gate = locks.GetOrAdd(identity, static _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(0, cancellationToken))
             return null;
 

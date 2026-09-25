@@ -14,12 +14,13 @@ public sealed class BackupOrchestrator(
 {
     public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default, IProgress<BackupProgress>? progress = null)
     {
-        await using var lease = await executionCoordinator.TryAcquireAsync(databaseId, cancellationToken);
-        if (lease is null)
-            throw new InvalidOperationException("A backup is already running for this database.");
-
         var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == databaseId, cancellationToken)
             ?? throw new KeyNotFoundException("Database endpoint was not found.");
+
+        await using var lease = await executionCoordinator.TryAcquireAsync(endpoint, cancellationToken);
+        if (lease is null)
+            throw new InvalidOperationException("A backup is already running for this SQL database.");
+
         var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == databaseId, cancellationToken)
             ?? throw new InvalidOperationException("Backup policy is not configured for this database.");
 

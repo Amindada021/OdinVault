@@ -173,6 +173,18 @@ app.MapPost("/api/databases", async (CreateDatabaseRequest request, OdinVaultDbC
     if (validationError is not null)
         return Results.BadRequest(new { message = validationError });
 
+    if (await HasDatabaseIdentityConflictAsync(
+        db,
+        null,
+        DatabaseEngine.SqlServer,
+        request.Host,
+        request.Port,
+        request.DatabaseName,
+        ct))
+    {
+        return Results.Conflict(new { message = "این دیتابیس SQL Server قبلاً ثبت شده است." });
+    }
+
     var endpoint = new DatabaseEndpoint
     {
         Name = request.Name.Trim(),
@@ -198,7 +210,14 @@ app.MapPost("/api/databases", async (CreateDatabaseRequest request, OdinVaultDbC
 
     db.DatabaseEndpoints.Add(endpoint);
     db.BackupPolicies.Add(policy);
-    await db.SaveChangesAsync(ct);
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateException ex) when (IsDatabaseIdentityConflict(ex))
+    {
+        return Results.Conflict(new { message = "این دیتابیس SQL Server قبلاً ثبت شده است." });
+    }
     return Results.Created($"/api/databases/{endpoint.Id}", ToDatabaseResponse(endpoint, policy));
 });
 
@@ -209,6 +228,18 @@ app.MapPut("/api/databases/{id:guid}", async (Guid id, UpdateDatabaseRequest req
         return Results.NotFound(new { message = "Database endpoint was not found." });
     if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Host) || string.IsNullOrWhiteSpace(request.DatabaseName))
         return Results.BadRequest(new { message = "Name, host and databaseName are required." });
+
+    if (await HasDatabaseIdentityConflictAsync(
+        db,
+        id,
+        DatabaseEngine.SqlServer,
+        request.Host,
+        request.Port,
+        request.DatabaseName,
+        ct))
+    {
+        return Results.Conflict(new { message = "این دیتابیس SQL Server قبلاً با یک اتصال دیگر ثبت شده است." });
+    }
 
     endpoint.Name = request.Name.Trim();
     endpoint.Host = request.Host.Trim();
@@ -222,7 +253,14 @@ app.MapPut("/api/databases/{id:guid}", async (Guid id, UpdateDatabaseRequest req
     else if (request.Password is not null)
         endpoint.ProtectedPassword = protector.Protect(request.Password);
 
-    await db.SaveChangesAsync(ct);
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateException ex) when (IsDatabaseIdentityConflict(ex))
+    {
+        return Results.Conflict(new { message = "این دیتابیس SQL Server قبلاً با یک اتصال دیگر ثبت شده است." });
+    }
     var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
     return Results.Ok(ToDatabaseResponse(endpoint, policy));
 });
@@ -359,6 +397,34 @@ static object ToDatabaseResponse(DatabaseEndpoint endpoint, BackupPolicy? policy
         policy.LastScheduledRunUtc
     }
 };
+
+static async Task<bool> HasDatabaseIdentityConflictAsync(
+    OdinVaultDbContext db,
+    Guid? excludedId,
+    DatabaseEngine engine,
+    string host,
+    int? port,
+    string databaseName,
+    CancellationToken cancellationToken)
+{
+    var requestedIdentity = DatabaseIdentity.Create(engine, host, port, databaseName);
+    var endpoints = await db.DatabaseEndpoints
+        .AsNoTracking()
+        .Where(x => x.Engine == engine && (!excludedId.HasValue || x.Id != excludedId.Value))
+        .Select(x => new { x.Engine, x.Host, x.Port, x.DatabaseName })
+        .ToListAsync(cancellationToken);
+
+    return endpoints.Any(x =>
+        string.Equals(
+            DatabaseIdentity.Create(x.Engine, x.Host, x.Port, x.DatabaseName),
+            requestedIdentity,
+            StringComparison.Ordinal));
+}
+
+static bool IsDatabaseIdentityConflict(DbUpdateException exception) =>
+    exception.InnerException is Microsoft.Data.Sqlite.SqliteException sqlite &&
+    sqlite.SqliteErrorCode == 19 &&
+    sqlite.Message.Contains("database_endpoint_identity_conflict", StringComparison.OrdinalIgnoreCase);
 
 static string? ValidateDatabaseRequest(string name, string host, string databaseName, string backupDirectory, string? cron)
 {

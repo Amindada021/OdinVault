@@ -56,6 +56,11 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                 await db.SaveChangesAsync(cancellationToken);
                 return new BackupJobEnqueueResult(BackupJobEnqueueStatus.Created, Snapshot(job));
             }
+            catch (DbUpdateException ex) when (IsQueueCapacityConflict(ex))
+            {
+                db.Entry(job).State = EntityState.Detached;
+                return new BackupJobEnqueueResult(BackupJobEnqueueStatus.QueueFull, null);
+            }
             catch (DbUpdateException ex) when (IsEnqueueUniqueConflict(ex))
             {
                 db.Entry(job).State = EntityState.Detached;
@@ -393,6 +398,13 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
         if (job.ExecutionToken != executionToken)
             return new BackupJobMutationResult(BackupJobMutationStatus.OwnershipConflict, Snapshot(job));
         return null;
+    }
+
+    private static bool IsQueueCapacityConflict(DbUpdateException exception)
+    {
+        return exception.InnerException is Microsoft.Data.Sqlite.SqliteException sqlite &&
+               sqlite.SqliteErrorCode == 19 &&
+               sqlite.Message.Contains("backup_job_queue_full", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsEnqueueUniqueConflict(DbUpdateException exception)
