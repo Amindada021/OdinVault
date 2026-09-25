@@ -87,6 +87,8 @@ internal sealed class StorageTargetEditForm : Form
 
         AcceptButton = save;
         CancelButton = cancel;
+    
+        UiLayout.Apply(this);
     }
 
     public UpdateStorageTargetClientRequest Request => new(
