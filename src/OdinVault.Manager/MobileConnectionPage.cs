@@ -27,6 +27,8 @@ internal sealed class MobileConnectionPage : UserControl
 
         BuildUi();
         UpdatePreview();
+    
+        UiLayout.Apply(this);
     }
 
     public void Reload()
