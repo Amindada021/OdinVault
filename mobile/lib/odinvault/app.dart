@@ -182,15 +182,21 @@ class _AddServerDialogState extends State<AddServerDialog> {
   }
 
   Future<void> save() async {
-    final baseUrl = url.text.trim().replaceAll(RegExp(r'/$'), '');
-    final parsed = Uri.tryParse(baseUrl);
-    if (name.text.trim().isEmpty ||
-        parsed == null ||
-        !parsed.hasScheme ||
-        key.text.trim().isEmpty) {
-      setState(() => error = 'نام، آدرس Agent و API Key الزامی است.');
+    String baseUrl;
+    try {
+      baseUrl = normalizeAgentBaseUrl(url.text);
+    } catch (e) {
+      setState(() => error = OdinVaultApiException.from(e).message);
       return;
     }
+
+    if (name.text.trim().isEmpty || key.text.trim().isEmpty) {
+      setState(() => error = 'نام نمایشی و API Key الزامی است.');
+      return;
+    }
+
+    url.text = baseUrl;
+    url.selection = TextSelection.collapsed(offset: url.text.length);
 
     setState(() {
       busy = true;
@@ -235,6 +241,10 @@ class _AddServerDialogState extends State<AddServerDialog> {
               TextField(
                 controller: url,
                 textDirection: TextDirection.ltr,
+                textAlign: TextAlign.left,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
                   labelText: 'آدرس Agent',
                   hintText: 'http://192.168.1.10:5188',
