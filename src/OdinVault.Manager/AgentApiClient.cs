@@ -58,6 +58,34 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(JsonOptions, cancellationToken);
     }
 
+    public async Task<AlertsOverviewResponse?> GetAlertsAsync(
+        bool includeRead = true,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Get,
+            $"api/alerts?includeRead={includeRead.ToString().ToLowerInvariant()}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<AlertsOverviewResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
+    public async Task MarkAlertsReadAsync(
+        IReadOnlyList<string> keys,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Post,
+            "api/alerts/mark-read");
+        request.Content = JsonContent.Create(
+            new MarkAlertsReadClientRequest(keys),
+            options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<RestorePreflightClientResponse?> PreflightRestoreAsync(
         Guid backupId,
         string targetDatabaseName,
@@ -444,6 +472,25 @@ internal sealed record DashboardActivityResponse(
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
     string? Error);
+
+internal sealed record AlertsOverviewResponse(
+    DateTime Utc,
+    int UnreadCount,
+    IReadOnlyList<AlertClientResponse> Alerts);
+
+internal sealed record AlertClientResponse(
+    string Key,
+    string Severity,
+    string Category,
+    Guid? DatabaseId,
+    string DatabaseName,
+    string Title,
+    string Message,
+    DateTime OccurredAtUtc,
+    bool IsRead);
+
+internal sealed record MarkAlertsReadClientRequest(
+    IReadOnlyList<string> Keys);
 
 internal sealed record RestoreClientRequest(
     Guid BackupId,
