@@ -82,7 +82,9 @@ public sealed class BackupOrchestrator(
             record.VerificationStatus = result.VerificationStatus;
             record.Status = BackupStatus.Succeeded;
             record.CompletedAtUtc = DateTime.UtcNow;
-            record.Error = null;
+            record.Error = result.VerificationStatus == VerificationStatus.Failed
+                ? result.VerificationError ?? "Backup verification failed."
+                : null;
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
