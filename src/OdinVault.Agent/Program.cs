@@ -41,6 +41,7 @@ var googleDriveOptions = new GoogleDriveOAuthOptions(
     builder.Configuration["OdinVault:GoogleDrive:ClientSecret"] ?? Environment.GetEnvironmentVariable("ODINVAULT_GOOGLE_CLIENT_SECRET") ?? string.Empty);
 
 builder.Services.AddSingleton(agentApiKey);
+builder.Services.AddSingleton(new AgentPaths(dataDirectory, storageDirectory, replicaDirectory));
 builder.Services.AddSingleton(new ReplicaSettings(dataDirectory, replicaDirectory));
 builder.Services.AddSingleton(googleDriveOptions);
 builder.Services.AddSingleton<GoogleDriveOAuthService>();
@@ -64,6 +65,7 @@ builder.Services.AddSingleton<BackupExecutionCoordinator>();
 builder.Services.AddScoped<StorageReplicationService>();
 builder.Services.AddScoped<BackupOrchestrator>();
 builder.Services.AddScoped<BackupJobRecoveryService>();
+builder.Services.AddScoped<AgentHealthService>();
 builder.Services.AddHostedService<BackupScheduler>();
 builder.Services.AddHostedService<ReplicationRetryWorker>();
 builder.Services.AddSingleton<BackupJobs>();
@@ -92,14 +94,36 @@ app.Logger.LogInformation(
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
+app.UseMiddleware<RequestCorrelationMiddleware>();
 app.UseMiddleware<AgentApiKeyMiddleware>();
 
-app.MapGet("/api/health", () => Results.Ok(new
+app.MapGet("/api/health", async (AgentHealthService health, CancellationToken ct) =>
 {
-    service = "OdinVault.Agent",
-    status = "healthy",
-    utc = DateTime.UtcNow
-}));
+    var snapshot = await health.CheckAsync(ct);
+    var payload = new
+    {
+        service = "OdinVault.Agent",
+        snapshot.Status,
+        snapshot.Utc,
+        components = new
+        {
+            sqlite = snapshot.SqliteAvailable ? "healthy" : "unhealthy",
+            snapshot.EnabledDatabases,
+            snapshot.QueuedJobs,
+            snapshot.RunningJobs,
+            snapshot.StaleRunningJobs,
+            snapshot.FailedJobsLast24Hours,
+            snapshot.FailedReplicasDue,
+            snapshot.DatabasesWithoutSuccessfulBackup,
+            snapshot.StorageFreeBytes,
+            snapshot.ReplicaFreeBytes
+        }
+    };
+
+    return snapshot.Status == "unhealthy"
+        ? Results.Json(payload, statusCode: StatusCodes.Status503ServiceUnavailable)
+        : Results.Ok(payload);
+});
 
 app.MapPost("/api/sql-server/discover", async (
     DiscoverSqlServerRequest request,
