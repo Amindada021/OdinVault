@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -367,6 +368,85 @@ internal sealed class AgentApiClient : IDisposable
             value.Trim());
     }
 
+    public async Task<PortProbeResult> TestPortAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            throw new InvalidOperationException("Base / Host الزامی است.");
+        if (port is < 1 or > 65535)
+            throw new InvalidOperationException("Port باید بین 1 تا 65535 باشد.");
+
+        using var client = new TcpClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+        var started = DateTime.UtcNow;
+        try
+        {
+            await client.ConnectAsync(host.Trim(), port, timeout.Token);
+            var elapsed = DateTime.UtcNow - started;
+            return new PortProbeResult(true, elapsed.TotalMilliseconds, null);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new PortProbeResult(false, null, "مهلت اتصال ۵ ثانیه‌ای تمام شد.");
+        }
+        catch (Exception ex) when (ex is SocketException or ArgumentException)
+        {
+            return new PortProbeResult(false, null, ex.Message);
+        }
+    }
+
+    public async Task<AgentEndpointProbeResult> TestAgentEndpointAsync(
+        string baseUrl,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+            !string.IsNullOrWhiteSpace(uri.UserInfo))
+        {
+            throw new InvalidOperationException("آدرس Agent معتبر نیست.");
+        }
+
+        using var client = new HttpClient
+        {
+            BaseAddress = new Uri(uri.GetLeftPart(UriPartial.Authority).TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(8)
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/health");
+        request.Headers.TryAddWithoutValidation("X-OdinVault-Key", LoadApiKey());
+
+        try
+        {
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new AgentEndpointProbeResult(
+                    false,
+                    $"Agent پاسخ HTTP {(int)response.StatusCode} برگرداند.");
+            }
+
+            var health = await response.Content.ReadFromJsonAsync<HealthResponse>(
+                JsonOptions,
+                cancellationToken);
+
+            return new AgentEndpointProbeResult(
+                health?.Status?.Equals("healthy", StringComparison.OrdinalIgnoreCase) == true,
+                health?.Status ?? "Agent پاسخ داد.");
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new AgentEndpointProbeResult(false, "مهلت اتصال به Agent تمام شد.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new AgentEndpointProbeResult(false, ex.Message);
+        }
+    }
+
     private static string? LoadMobileBaseUrl()
     {
         var configured = Environment.GetEnvironmentVariable("ODINVAULT_MOBILE_BASE_URL");
@@ -441,6 +521,15 @@ internal sealed class AgentApiClient : IDisposable
         _longRunningHttpClient.Dispose();
     }
 }
+
+internal sealed record PortProbeResult(
+    bool IsOpen,
+    double? LatencyMilliseconds,
+    string? Error);
+
+internal sealed record AgentEndpointProbeResult(
+    bool Success,
+    string Message);
 
 internal sealed record HealthResponse(string? Service, string? Status, DateTime Utc);
 
