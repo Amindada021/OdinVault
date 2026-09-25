@@ -323,12 +323,26 @@ app.MapDelete("/api/databases/{id:guid}", async (Guid id, bool deleteHistory, bo
     var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == id, ct);
     if (endpoint is null)
         return Results.NotFound(new { message = "Database endpoint was not found." });
+
+    var hasActiveJob = await db.BackupJobs.AnyAsync(
+        x => x.DatabaseEndpointId == id &&
+             (x.Status == BackupJobStatus.Queued || x.Status == BackupJobStatus.Running),
+        ct);
+    if (hasActiveJob)
+        return Results.Conflict(new { message = "A backup job is queued or running for this database." });
+
     if (await db.BackupRecords.AnyAsync(x => x.DatabaseEndpointId == id && x.Status == BackupStatus.Running, ct))
         return Results.Conflict(new { message = "A backup is currently running for this database." });
 
     var records = await db.BackupRecords.Where(x => x.DatabaseEndpointId == id).ToListAsync(ct);
-    if (records.Count > 0 && !deleteHistory)
-        return Results.Conflict(new { message = "Backup history exists. Retry with deleteHistory=true if you want to remove this database configuration and its history." });
+    var hasJobHistory = await db.BackupJobs.AnyAsync(x => x.DatabaseEndpointId == id, ct);
+    if ((records.Count > 0 || hasJobHistory) && !deleteHistory)
+    {
+        return Results.Conflict(new
+        {
+            message = "Backup or job history exists. Retry with deleteHistory=true if you want to remove this database configuration and its history."
+        });
+    }
 
     if (deleteFiles)
     {
@@ -347,13 +361,18 @@ app.MapDelete("/api/databases/{id:guid}", async (Guid id, bool deleteHistory, bo
     var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
     if (policy is not null)
         db.BackupPolicies.Remove(policy);
+
     if (deleteHistory)
     {
+        var jobs = await db.BackupJobs.Where(x => x.DatabaseEndpointId == id).ToListAsync(ct);
+        db.BackupJobs.RemoveRange(jobs);
+
         var recordIds = records.Select(x => x.Id).ToList();
         var replicas = await db.BackupReplicas.Where(x => recordIds.Contains(x.BackupRecordId)).ToListAsync(ct);
         db.BackupReplicas.RemoveRange(replicas);
         db.BackupRecords.RemoveRange(records);
     }
+
     db.DatabaseEndpoints.Remove(endpoint);
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
