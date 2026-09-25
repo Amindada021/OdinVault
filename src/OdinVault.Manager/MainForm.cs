@@ -14,7 +14,7 @@ internal sealed class MainForm : Form
     private readonly Button _deleteButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
-    private readonly Button _copyApiKeyButton = new();
+    private readonly Button _mobileConnectionButton = new();
     private readonly Button _updateButton = new();
 
     public MainForm()
@@ -103,10 +103,10 @@ internal sealed class MainForm : Form
         ConfigureButton(_deleteButton, "حذف", async (_, _) => await DeleteSelectedAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ انتخاب‌شده‌ها", async (_, _) => await BackupSelectedAsync());
-        ConfigureButton(_copyApiKeyButton, "کپی کلید API", (_, _) => CopyApiKey());
+        ConfigureButton(_mobileConnectionButton, "اتصال موبایل", (_, _) => ShowMobileConnection());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
-        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _copyApiKeyButton, _updateButton]);
+        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _mobileConnectionButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
@@ -431,19 +431,12 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void CopyApiKey()
+    private void ShowMobileConnection()
     {
         try
         {
-            var apiKey = _api.GetApiKey();
-            Clipboard.SetText(apiKey);
-
-            MessageBox.Show(
-                this,
-                "کلید API در Clipboard کپی شد. حالا می‌توانید آن را داخل اپ موبایل Paste کنید.",
-                "OdinVault",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            using var dialog = new MobileConnectionForm(_api);
+            dialog.ShowDialog(this);
         }
         catch (Exception ex)
         {
@@ -555,7 +548,7 @@ internal sealed class MainForm : Form
         _deleteButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
-        _copyApiKeyButton.Enabled = !busy;
+        _mobileConnectionButton.Enabled = !busy;
         _updateButton.Enabled = !busy;
     }
 
@@ -902,4 +895,171 @@ internal sealed class AddDatabaseForm : Form
 
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
+
+internal sealed class MobileConnectionForm : Form
+{
+    private readonly AgentApiClient _api;
+    private readonly TextBox _baseUrl = new();
+    private readonly TextBox _apiKey = new() { ReadOnly = true, UseSystemPasswordChar = true };
+    private readonly CheckBox _showKey = new() { Text = "نمایش کلید", AutoSize = true };
+
+    public MobileConnectionForm(AgentApiClient api)
+    {
+        _api = api;
+
+        Text = "اتصال موبایل";
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ClientSize = new Size(650, 330);
+        Font = new Font("Segoe UI", 10F);
+        RightToLeft = RightToLeft.Yes;
+        RightToLeftLayout = true;
+
+        _baseUrl.Text = _api.GetMobileBaseUrl();
+        _apiKey.Text = _api.GetApiKey();
+
+        BuildUi();
+    }
+
+    private void BuildUi()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(18),
+            ColumnCount = 1,
+            RowCount = 6
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+
+        var title = new Label
+        {
+            Text = "اطلاعات کامل اتصال اپ موبایل",
+            Font = new Font(Font.FontFamily, 13F, FontStyle.Bold),
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight
+        };
+        root.Controls.Add(title, 0, 0);
+
+        var urlPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2
+        };
+        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        urlPanel.Controls.Add(new Label
+        {
+            Text = "آدرس Agent / دامنه",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight
+        }, 0, 0);
+        _baseUrl.Dock = DockStyle.Fill;
+        _baseUrl.RightToLeft = RightToLeft.No;
+        urlPanel.Controls.Add(_baseUrl, 1, 0);
+        root.Controls.Add(urlPanel, 0, 1);
+
+        var keyPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3
+        };
+        keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+        keyPanel.Controls.Add(new Label
+        {
+            Text = "API Key",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight
+        }, 0, 0);
+        _apiKey.Dock = DockStyle.Fill;
+        _apiKey.RightToLeft = RightToLeft.No;
+        keyPanel.Controls.Add(_apiKey, 1, 0);
+        var copyKey = new Button { Text = "کپی کلید", Dock = DockStyle.Fill };
+        copyKey.Click += (_, _) =>
+        {
+            Clipboard.SetText(_apiKey.Text);
+            MessageBox.Show(this, "کلید API کپی شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        };
+        keyPanel.Controls.Add(copyKey, 2, 0);
+        root.Controls.Add(keyPanel, 0, 2);
+
+        _showKey.CheckedChanged += (_, _) => _apiKey.UseSystemPasswordChar = !_showKey.Checked;
+        root.Controls.Add(_showKey, 0, 3);
+
+        var note = new Label
+        {
+            Text = "اگر از دامنه یا Reverse Proxy استفاده می‌کنید، آدرس HTTPS را اینجا وارد و ذخیره کنید. " +
+                   "برای شبکه داخلی می‌توانید IP یا نام این سرور را همراه پورت 5188 وارد کنید.",
+            AutoSize = true,
+            MaximumSize = new Size(600, 0),
+            ForeColor = SystemColors.GrayText
+        };
+        root.Controls.Add(note, 0, 4);
+
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false
+        };
+
+        var close = new Button { Text = "بستن", AutoSize = true };
+        close.Click += (_, _) => Close();
+
+        var saveUrl = new Button { Text = "ذخیره آدرس", AutoSize = true };
+        saveUrl.Click += (_, _) =>
+        {
+            try
+            {
+                _api.SaveMobileBaseUrl(_baseUrl.Text);
+                MessageBox.Show(this, "آدرس اتصال موبایل ذخیره شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+
+        var copyAll = new Button { Text = "کپی همه اطلاعات", AutoSize = true };
+        copyAll.Click += (_, _) =>
+        {
+            try
+            {
+                _api.SaveMobileBaseUrl(_baseUrl.Text);
+                var text =
+                    $"OdinVault Mobile{Environment.NewLine}" +
+                    $"Agent URL: {_baseUrl.Text.Trim()}{Environment.NewLine}" +
+                    $"API Key: {_apiKey.Text}";
+                Clipboard.SetText(text);
+
+                MessageBox.Show(
+                    this,
+                    "آدرس Agent و API Key با هم کپی شدند.",
+                    "OdinVault",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+
+        buttons.Controls.Add(close);
+        buttons.Controls.Add(saveUrl);
+        buttons.Controls.Add(copyAll);
+        root.Controls.Add(buttons, 0, 5);
+
+        Controls.Add(root);
+    }
 }
