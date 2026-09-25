@@ -170,35 +170,51 @@ public sealed class BackupOrchestrator(
             .Skip(maxBackups)
             .ToListAsync(cancellationToken);
 
-        var requiredTargetIds = await (
+        var requiredTargets = await (
             from link in db.DatabaseStorageTargets
             join target in db.StorageTargets on link.StorageTargetId equals target.Id
             where link.DatabaseEndpointId == databaseId &&
                   link.IsEnabled &&
                   target.IsEnabled
-            select target.Id)
+            select new { target.Id, target.Type })
             .Distinct()
             .ToListAsync(cancellationToken);
 
         foreach (var old in oldRecords)
         {
-            if (requiredTargetIds.Count > 0)
+            if (requiredTargets.Count > 0)
             {
-                var successfulTargetIds = await db.BackupReplicas
+                var targetIds = requiredTargets.Select(x => x.Id).ToList();
+                var successfulReplicas = await db.BackupReplicas
                     .Where(x => x.BackupRecordId == old.Id &&
                                 x.Status == ReplicaStatus.Succeeded &&
-                                requiredTargetIds.Contains(x.StorageTargetId))
-                    .Select(x => x.StorageTargetId)
-                    .Distinct()
+                                targetIds.Contains(x.StorageTargetId))
+                    .Select(x => new
+                    {
+                        x.StorageTargetId,
+                        x.ContentHashSha256
+                    })
                     .ToListAsync(cancellationToken);
 
-                if (successfulTargetIds.Count != requiredTargetIds.Count)
+                var allRequiredTargetsProtected = requiredTargets.All(target =>
+                {
+                    var replica = successfulReplicas.FirstOrDefault(
+                        x => x.StorageTargetId == target.Id);
+                    if (replica is null)
+                        return false;
+
+                    if (target.Type != StorageProviderType.OdinVaultReplica)
+                        return true;
+
+                    return replica.ContentHashSha256 is { Length: 64 } hash &&
+                           hash.All(Uri.IsHexDigit);
+                });
+
+                if (!allRequiredTargetsProtected)
                 {
                     logger.LogWarning(
-                        "Retention kept local backup {BackupId} because only {SucceededTargets}/{RequiredTargets} required replicas succeeded.",
-                        old.Id,
-                        successfulTargetIds.Count,
-                        requiredTargetIds.Count);
+                        "Retention kept local backup {BackupId} because not every required target has a successful integrity-qualified replica.",
+                        old.Id);
                     continue;
                 }
             }
