@@ -100,6 +100,8 @@ internal sealed class ReplicaSetupForm : Form
             await LoadLinks();
             await LoadReceived();
         });
+    
+        UiLayout.Apply(this);
     }
 
     private async Task LoadTargets()
