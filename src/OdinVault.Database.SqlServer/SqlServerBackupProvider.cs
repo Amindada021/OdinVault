@@ -235,7 +235,7 @@ WHERE d.name = @databaseName;
         if (comma > 0)
             normalized = normalized[..comma];
 
-        var slash = normalized.IndexOf('\');
+        var slash = normalized.IndexOf('\\');
         if (slash > 0)
             normalized = normalized[..slash];
 
