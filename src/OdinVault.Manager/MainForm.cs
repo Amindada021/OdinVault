@@ -34,7 +34,13 @@ internal sealed class MainForm : Form
     private Control? _dashboardPage;
     private Control? _databasesPage;
     private Control? _backupsPage;
+    private Control? _storagePage;
     private Guid? _currentDetailsDatabaseId;
+    private readonly Label _localStoragePath = new();
+    private readonly Label _localStorageFree = new();
+    private readonly Label _localStorageStatus = new();
+    private readonly DataGridView _storageGrid = new();
+    private StorageOverviewResponse? _storageOverview;
     private readonly DataGridView _jobsGrid = new();
     private readonly DataGridView _backupHistoryGrid = new();
     private readonly ComboBox _backupDatabaseFilter = new();
@@ -294,9 +300,9 @@ internal sealed class MainForm : Form
                     break;
                 case "storage":
                     _pageTitle.Text = "ذخیره‌سازی";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "ذخیره‌سازی و Replica",
-                        "مدیریت Local، Google Drive و OdinVault Replica در این بخش قرار می‌گیرد."));
+                    _storagePage ??= BuildStoragePage();
+                    _contentHost.Controls.Add(_storagePage);
+                    _ = RefreshStoragePageAsync();
                     break;
                 case "restore":
                     _pageTitle.Text = "بازیابی";
@@ -1058,6 +1064,301 @@ internal sealed class MainForm : Form
     {
         public override string ToString() => Name;
     }
+
+    private Control BuildStoragePage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var local = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, 16),
+            Padding = new Padding(16),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        local.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        local.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+        local.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+
+        _localStoragePath.Dock = DockStyle.Fill;
+        _localStoragePath.TextAlign = ContentAlignment.MiddleRight;
+        _localStoragePath.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
+        _localStoragePath.RightToLeft = RightToLeft.No;
+
+        _localStorageFree.Dock = DockStyle.Fill;
+        _localStorageFree.TextAlign = ContentAlignment.MiddleRight;
+        _localStorageFree.Font = new Font(Font.FontFamily, 17F, FontStyle.Bold);
+
+        _localStorageStatus.Dock = DockStyle.Fill;
+        _localStorageStatus.TextAlign = ContentAlignment.MiddleRight;
+
+        local.Controls.Add(WrapStorageMetric("مسیر Local", _localStoragePath), 0, 0);
+        local.Controls.Add(WrapStorageMetric("فضای آزاد", _localStorageFree), 1, 0);
+        local.Controls.Add(WrapStorageMetric("وضعیت", _localStorageStatus), 2, 0);
+        root.Controls.Add(local, 0, 0);
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(4)
+        };
+
+        var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 36 };
+        refresh.Click += async (_, _) => await RefreshStoragePageAsync();
+
+        var test = new Button { Text = "تست اتصال", AutoSize = true, Height = 36 };
+        test.Click += async (_, _) => await TestSelectedStorageAsync();
+
+        var edit = new Button { Text = "ویرایش", AutoSize = true, Height = 36 };
+        edit.Click += async (_, _) => await EditSelectedStorageAsync();
+
+        var toggle = new Button { Text = "فعال / غیرفعال", AutoSize = true, Height = 36 };
+        toggle.Click += async (_, _) => await ToggleSelectedStorageAsync();
+
+        var replicaSetup = new Button { Text = "مدیریت Replica", AutoSize = true, Height = 36 };
+        replicaSetup.Click += (_, _) =>
+        {
+            using var dialog = new ReplicaSetupForm(_api);
+            dialog.ShowDialog(this);
+            _ = RefreshStoragePageAsync();
+        };
+
+        toolbar.Controls.Add(refresh);
+        toolbar.Controls.Add(test);
+        toolbar.Controls.Add(edit);
+        toolbar.Controls.Add(toggle);
+        toolbar.Controls.Add(replicaSetup);
+        root.Controls.Add(toolbar, 0, 1);
+
+        ConfigureReadOnlyGrid(_storageGrid);
+        _storageGrid.Columns.Clear();
+        _storageGrid.Columns.Add("Name", "نام");
+        _storageGrid.Columns.Add("Type", "نوع");
+        _storageGrid.Columns.Add("Status", "وضعیت");
+        _storageGrid.Columns.Add("Endpoint", "مسیر / حساب / مقصد");
+        _storageGrid.Columns.Add("Databases", "دیتابیس‌ها");
+        _storageGrid.Columns.Add("Success", "Replica موفق");
+        _storageGrid.Columns.Add("Failed", "Replica ناموفق");
+        _storageGrid.Columns.Add("LastSuccess", "آخرین موفقیت");
+        _storageGrid.Columns.Add("LastError", "آخرین خطا");
+        root.Controls.Add(BuildBackupsSection("مقصدهای ذخیره‌سازی", _storageGrid), 0, 2);
+
+        return root;
+    }
+
+    private Control WrapStorageMetric(string title, Control value)
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(8)
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(110, 120, 135)
+        }, 0, 0);
+        panel.Controls.Add(value, 0, 1);
+        return panel;
+    }
+
+    private async Task RefreshStoragePageAsync()
+    {
+        try
+        {
+            _storageOverview = await _api.GetStorageOverviewAsync();
+            if (_storageOverview is null)
+                return;
+
+            _localStoragePath.Text = _storageOverview.Local.Directory;
+            _localStorageFree.Text = FormatBytes(_storageOverview.Local.FreeBytes);
+            _localStorageStatus.Text = _storageOverview.Local.Exists && _storageOverview.Local.Writable
+                ? "● سالم و قابل نوشتن"
+                : _storageOverview.Local.Exists
+                    ? "▲ مسیر وجود دارد ولی قابل نوشتن نیست"
+                    : "● مسیر در دسترس نیست";
+
+            _localStorageStatus.ForeColor =
+                _storageOverview.Local.Exists && _storageOverview.Local.Writable
+                    ? Color.FromArgb(38, 130, 86)
+                    : Color.FromArgb(160, 65, 55);
+
+            _storageGrid.Rows.Clear();
+            foreach (var target in _storageOverview.Targets)
+            {
+                var endpoint = target.Type switch
+                {
+                    2 => target.AccountEmail ?? target.FolderId ?? "Google Drive",
+                    5 => target.BaseUrl ?? "OdinVault Replica",
+                    _ => target.FolderId ?? "—"
+                };
+
+                var status = !target.IsEnabled
+                    ? "غیرفعال"
+                    : target.IsConnected
+                        ? "متصل"
+                        : "نیاز به اتصال";
+
+                var rowIndex = _storageGrid.Rows.Add(
+                    target.Name,
+                    FormatStorageType(target.Type),
+                    status,
+                    endpoint,
+                    target.LinkedDatabases,
+                    target.SucceededReplicas,
+                    target.FailedReplicas,
+                    target.LastSuccessAtUtc is DateTime success
+                        ? FormatDashboardTime(success)
+                        : "—",
+                    target.LastError ?? "—");
+
+                var row = _storageGrid.Rows[rowIndex];
+                row.Tag = target.Id;
+                if (!target.IsEnabled)
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(120, 125, 135);
+                else if (!target.IsConnected || !string.IsNullOrWhiteSpace(target.LastError))
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(155, 70, 55);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private StorageTargetOverviewResponse? GetSelectedStorageTarget()
+    {
+        if (_storageOverview is null ||
+            _storageGrid.CurrentRow?.Tag is not Guid id)
+            return null;
+
+        return _storageOverview.Targets.FirstOrDefault(x => x.Id == id);
+    }
+
+    private async Task TestSelectedStorageAsync()
+    {
+        var target = GetSelectedStorageTarget();
+        if (target is null)
+        {
+            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            SetBusy(true);
+            var result = await _api.TestStorageTargetAsync(target.Id);
+            MessageBox.Show(
+                this,
+                result?.Message ?? (result?.Success == true ? "اتصال موفق بود." : "تست اتصال ناموفق بود."),
+                "تست اتصال",
+                MessageBoxButtons.OK,
+                result?.Success == true ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            await RefreshStoragePageAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task EditSelectedStorageAsync()
+    {
+        var target = GetSelectedStorageTarget();
+        if (target is null)
+        {
+            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dialog = new StorageTargetEditForm(target);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        try
+        {
+            SetBusy(true);
+            await _api.UpdateStorageTargetAsync(target.Id, dialog.Request);
+            await RefreshStoragePageAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task ToggleSelectedStorageAsync()
+    {
+        var target = GetSelectedStorageTarget();
+        if (target is null)
+        {
+            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var request = new UpdateStorageTargetClientRequest(
+            target.Name,
+            target.FolderId,
+            !target.IsEnabled,
+            target.BaseUrl,
+            null);
+
+        try
+        {
+            SetBusy(true);
+            await _api.UpdateStorageTargetAsync(target.Id, request);
+            await RefreshStoragePageAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private static string FormatStorageType(int type) => type switch
+    {
+        1 => "Local",
+        2 => "Google Drive",
+        3 => "S3",
+        4 => "SFTP",
+        5 => "OdinVault Replica",
+        _ => "نامشخص"
+    };
 
     private Control BuildPlaceholderPage(string title, string description)
     {
