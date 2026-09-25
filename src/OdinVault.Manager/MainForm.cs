@@ -2013,8 +2013,8 @@ internal sealed class MainForm : Form
 
     private static string Csv(string value)
     {
-        var normalized = value.Replace(""", """");
-        return $""{normalized}"";
+        var normalized = value.Replace("\"", "\"\"");
+        return $"\"{normalized}\"";
     }
 
     private static string FormatReportSeverity(string severity) => severity switch
