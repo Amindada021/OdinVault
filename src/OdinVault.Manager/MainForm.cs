@@ -4,6 +4,10 @@ internal sealed class MainForm : Form
 {
     private readonly AgentApiClient _api = new();
     private readonly GitHubUpdateService _updates = new();
+    private readonly ManagerSettingsStore _settingsStore = new();
+    private ManagerSettings _settings;
+    private readonly NotifyIcon _trayIcon = new();
+    private bool _allowExit;
     private readonly Label _agentStatus = new();
     private readonly Label _lastRefresh = new();
     private readonly DataGridView _grid = new();
@@ -38,7 +42,15 @@ internal sealed class MainForm : Form
     private Control? _restorePage;
     private Control? _alertsPage;
     private Control? _reportsPage;
+    private Control? _settingsPage;
     private Guid? _currentDetailsDatabaseId;
+    private readonly CheckBox _settingStartMinimized = new();
+    private readonly CheckBox _settingMinimizeToTray = new();
+    private readonly CheckBox _settingTrayNotifications = new();
+    private readonly CheckBox _settingAutoUpdate = new();
+    private readonly ComboBox _settingTheme = new();
+    private readonly TextBox _settingMobileUrl = new();
+    private readonly Label _settingVersion = new();
     private readonly ComboBox _reportRange = new();
     private readonly Label _reportSuccessRate = new();
     private readonly Label _reportFailureCount = new();
@@ -65,6 +77,8 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
+        _settings = _settingsStore.Load();
+
         Text = "OdinVault Manager";
         StartPosition = FormStartPosition.CenterScreen;
         WindowState = FormWindowState.Maximized;
@@ -78,14 +92,41 @@ internal sealed class MainForm : Form
         RightToLeftLayout = true;
 
         BuildUi();
+        ConfigureTray();
+        ApplyTheme();
 
         Shown += async (_, _) =>
         {
             await RefreshAllAsync();
-            await CheckForUpdatesAsync(silent: true);
+
+            if (_settings.CheckForUpdatesOnStart)
+                await CheckForUpdatesAsync(silent: true);
+
+            if (_settings.StartMinimizedToTray)
+                HideToTray(showNotification: false);
         };
+
+        Resize += (_, _) =>
+        {
+            if (WindowState == FormWindowState.Minimized && _settings.MinimizeToTray)
+                HideToTray(showNotification: false);
+        };
+
+        FormClosing += (_, e) =>
+        {
+            if (!_allowExit &&
+                e.CloseReason == CloseReason.UserClosing &&
+                _settings.MinimizeToTray)
+            {
+                e.Cancel = true;
+                HideToTray(showNotification: true);
+            }
+        };
+
         FormClosed += (_, _) =>
         {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
             _api.Dispose();
             _updates.Dispose();
         };
@@ -339,14 +380,15 @@ internal sealed class MainForm : Form
                     break;
                 default:
                     _pageTitle.Text = "تنظیمات";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "تنظیمات",
-                        "تنظیمات Agent، امنیت، اعلان‌ها و بروزرسانی در این بخش قرار می‌گیرند."));
+                    _settingsPage ??= BuildSettingsPage();
+                    _contentHost.Controls.Add(_settingsPage);
+                    LoadSettingsIntoControls();
                     break;
             }
         }
         finally
         {
+            ApplyThemeToContent();
             _contentHost.ResumeLayout();
         }
     }
@@ -1982,6 +2024,547 @@ internal sealed class MainForm : Form
         "warning" => "نیاز به بررسی",
         _ => "سالم"
     };
+
+    private Control BuildSettingsPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = new Padding(4),
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
+
+        root.Controls.Add(BuildSettingsCard(
+            "رفتار برنامه",
+            BuildGeneralSettingsContent()), 0, 0);
+
+        root.Controls.Add(BuildSettingsCard(
+            "ظاهر",
+            BuildAppearanceSettingsContent()), 1, 0);
+
+        root.Controls.Add(BuildSettingsCard(
+            "Agent و اتصال موبایل",
+            BuildAgentSettingsContent()), 0, 1);
+
+        root.Controls.Add(BuildSettingsCard(
+            "بروزرسانی و درباره",
+            BuildUpdateSettingsContent()), 1, 1);
+
+        return root;
+    }
+
+    private Control BuildSettingsCard(string title, Control content)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(8),
+            Padding = new Padding(14),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        card.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 12F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(45, 55, 70)
+        }, 0, 0);
+        card.Controls.Add(content, 0, 1);
+        return card;
+    }
+
+    private Control BuildGeneralSettingsContent()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true
+        };
+
+        _settingStartMinimized.Text = "اجرای Manager به‌صورت Minimized در System Tray";
+        _settingStartMinimized.AutoSize = true;
+        _settingStartMinimized.Margin = new Padding(8);
+
+        _settingMinimizeToTray.Text = "Minimize و بستن پنجره به Tray منتقل شود";
+        _settingMinimizeToTray.AutoSize = true;
+        _settingMinimizeToTray.Margin = new Padding(8);
+
+        _settingTrayNotifications.Text = "اعلان‌های System Tray نمایش داده شوند";
+        _settingTrayNotifications.AutoSize = true;
+        _settingTrayNotifications.Margin = new Padding(8);
+
+        _settingAutoUpdate.Text = "هنگام اجرای Manager بروزرسانی بررسی شود";
+        _settingAutoUpdate.AutoSize = true;
+        _settingAutoUpdate.Margin = new Padding(8);
+
+        var save = new Button
+        {
+            Text = "ذخیره تنظیمات",
+            AutoSize = true,
+            Height = 38,
+            Margin = new Padding(8, 18, 8, 8)
+        };
+        save.Click += (_, _) => SaveManagerSettings();
+
+        panel.Controls.AddRange(
+        [
+            _settingStartMinimized,
+            _settingMinimizeToTray,
+            _settingTrayNotifications,
+            _settingAutoUpdate,
+            save
+        ]);
+
+        return panel;
+    }
+
+    private Control BuildAppearanceSettingsContent()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            Padding = new Padding(6)
+        };
+
+        panel.Controls.Add(new Label
+        {
+            Text = "تم رابط کاربری",
+            AutoSize = true,
+            Margin = new Padding(6)
+        }, 0, 0);
+
+        _settingTheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        _settingTheme.Width = 180;
+        _settingTheme.Items.AddRange(["روشن", "تیره"]);
+        panel.Controls.Add(_settingTheme, 0, 1);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "تغییر تم بلافاصله روی صفحه‌های باز اعمال می‌شود. پنجره همچنان قابل Resize و Maximize است.",
+            AutoSize = true,
+            MaximumSize = new Size(430, 0),
+            ForeColor = Color.FromArgb(105, 115, 130),
+            Margin = new Padding(6, 14, 6, 6)
+        }, 0, 2);
+
+        var apply = new Button
+        {
+            Text = "اعمال ظاهر",
+            AutoSize = true,
+            Height = 36,
+            Margin = new Padding(6, 16, 6, 6)
+        };
+        apply.Click += (_, _) =>
+        {
+            _settings = _settings with
+            {
+                Theme = _settingTheme.SelectedIndex == 1 ? "Dark" : "Light"
+            };
+            _settingsStore.Save(_settings);
+            ApplyTheme();
+        };
+        panel.Controls.Add(apply, 0, 3);
+        return panel;
+    }
+
+    private Control BuildAgentSettingsContent()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 6,
+            Padding = new Padding(6)
+        };
+
+        panel.Controls.Add(new Label
+        {
+            Text = "Agent محلی: http://127.0.0.1:5188",
+            AutoSize = true,
+            Margin = new Padding(6)
+        }, 0, 0);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "آدرس اتصال موبایل",
+            AutoSize = true,
+            Margin = new Padding(6, 12, 6, 4)
+        }, 0, 1);
+
+        _settingMobileUrl.Dock = DockStyle.Top;
+        _settingMobileUrl.RightToLeft = RightToLeft.No;
+        panel.Controls.Add(_settingMobileUrl, 0, 2);
+
+        var saveMobile = new Button
+        {
+            Text = "ذخیره آدرس موبایل",
+            AutoSize = true,
+            Height = 36,
+            Margin = new Padding(6, 12, 6, 6)
+        };
+        saveMobile.Click += (_, _) =>
+        {
+            try
+            {
+                _api.SaveMobileBaseUrl(_settingMobileUrl.Text);
+                MessageBox.Show(
+                    this,
+                    "آدرس اتصال موبایل ذخیره شد.",
+                    "OdinVault",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+        };
+        panel.Controls.Add(saveMobile, 0, 3);
+
+        var mobile = new Button
+        {
+            Text = "نمایش اطلاعات اتصال موبایل",
+            AutoSize = true,
+            Height = 36,
+            Margin = new Padding(6)
+        };
+        mobile.Click += (_, _) => ShowMobileConnection();
+        panel.Controls.Add(mobile, 0, 4);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "کلید Agent در UI نمایش داده نمی‌شود و از مسیر امن فعلی Manager خوانده می‌شود.",
+            AutoSize = true,
+            MaximumSize = new Size(430, 0),
+            ForeColor = Color.FromArgb(105, 115, 130),
+            Margin = new Padding(6)
+        }, 0, 5);
+
+        return panel;
+    }
+
+    private Control BuildUpdateSettingsContent()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 5,
+            Padding = new Padding(6)
+        };
+
+        _settingVersion.Dock = DockStyle.Top;
+        _settingVersion.TextAlign = ContentAlignment.MiddleRight;
+        _settingVersion.Font = new Font(Font.FontFamily, 11F, FontStyle.Bold);
+        panel.Controls.Add(_settingVersion, 0, 0);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "بروزرسانی‌ها از GitHub Release دریافت می‌شوند و SHA256 Installer قبل از اجرا بررسی می‌شود.",
+            AutoSize = true,
+            MaximumSize = new Size(430, 0),
+            ForeColor = Color.FromArgb(105, 115, 130),
+            Margin = new Padding(6, 10, 6, 10)
+        }, 0, 1);
+
+        var check = new Button
+        {
+            Text = "بررسی بروزرسانی",
+            AutoSize = true,
+            Height = 36,
+            Margin = new Padding(6)
+        };
+        check.Click += async (_, _) => await CheckForUpdatesAsync(silent: false);
+        panel.Controls.Add(check, 0, 2);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "OdinVault Manager",
+            AutoSize = true,
+            Font = new Font(Font.FontFamily, 10F, FontStyle.Bold),
+            Margin = new Padding(6, 18, 6, 4)
+        }, 0, 3);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "مدیریت بکاپ SQL Server، Restore، Replica و مانیتورینگ.",
+            AutoSize = true,
+            MaximumSize = new Size(430, 0),
+            Margin = new Padding(6)
+        }, 0, 4);
+
+        return panel;
+    }
+
+    private void LoadSettingsIntoControls()
+    {
+        _settingStartMinimized.Checked = _settings.StartMinimizedToTray;
+        _settingMinimizeToTray.Checked = _settings.MinimizeToTray;
+        _settingTrayNotifications.Checked = _settings.ShowTrayNotifications;
+        _settingAutoUpdate.Checked = _settings.CheckForUpdatesOnStart;
+        _settingTheme.SelectedIndex = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : 0;
+        _settingMobileUrl.Text = _api.GetMobileBaseUrl();
+        _settingVersion.Text = $"نسخه Manager: {_updates.GetCurrentVersion()}";
+    }
+
+    private void SaveManagerSettings()
+    {
+        _settings = new ManagerSettings(
+            _settingStartMinimized.Checked,
+            _settingMinimizeToTray.Checked,
+            _settingTrayNotifications.Checked,
+            _settingAutoUpdate.Checked,
+            _settingTheme.SelectedIndex == 1 ? "Dark" : "Light");
+
+        _settingsStore.Save(_settings);
+        ApplyTheme();
+
+        MessageBox.Show(
+            this,
+            "تنظیمات Manager ذخیره شد.",
+            "OdinVault",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    private void ConfigureTray()
+    {
+        var menu = new ContextMenuStrip();
+
+        var open = new ToolStripMenuItem("باز کردن OdinVault");
+        open.Click += (_, _) => RestoreFromTray();
+
+        var backupAll = new ToolStripMenuItem("بکاپ همه دیتابیس‌ها الآن");
+        backupAll.Click += async (_, _) => await BackupAllFromTrayAsync();
+
+        var refresh = new ToolStripMenuItem("بروزرسانی وضعیت");
+        refresh.Click += async (_, _) =>
+        {
+            RestoreFromTray();
+            await RefreshAllAsync();
+        };
+
+        var exit = new ToolStripMenuItem("خروج از Manager");
+        exit.Click += (_, _) =>
+        {
+            _allowExit = true;
+            Close();
+        };
+
+        menu.Items.Add(open);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(backupAll);
+        menu.Items.Add(refresh);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(exit);
+
+        _trayIcon.Text = "OdinVault Manager";
+        _trayIcon.Icon = SystemIcons.Shield;
+        _trayIcon.ContextMenuStrip = menu;
+        _trayIcon.Visible = true;
+        _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+    }
+
+    private void HideToTray(bool showNotification)
+    {
+        Hide();
+        ShowInTaskbar = false;
+
+        if (showNotification && _settings.ShowTrayNotifications)
+        {
+            _trayIcon.BalloonTipTitle = "OdinVault";
+            _trayIcon.BalloonTipText = "Manager در System Tray فعال است. Agent و زمان‌بندی‌ها مستقل به کار ادامه می‌دهند.";
+            _trayIcon.BalloonTipIcon = ToolTipIcon.Info;
+            _trayIcon.ShowBalloonTip(3000);
+        }
+    }
+
+    private void RestoreFromTray()
+    {
+        ShowInTaskbar = true;
+        Show();
+        WindowState = FormWindowState.Maximized;
+        Activate();
+        BringToFront();
+    }
+
+    private async Task BackupAllFromTrayAsync()
+    {
+        try
+        {
+            var databases = (await _api.GetDatabasesAsync())
+                .Where(x => x.IsEnabled && x.Policy?.IsEnabled == true)
+                .ToList();
+
+            if (databases.Count == 0)
+            {
+                ShowTrayNotification("OdinVault", "هیچ دیتابیس فعالی برای بکاپ وجود ندارد.", ToolTipIcon.Info);
+                return;
+            }
+
+            var succeeded = 0;
+            var failed = 0;
+
+            foreach (var database in databases)
+            {
+                try
+                {
+                    await _api.RunBackupAsync(database.Id);
+                    succeeded++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            ShowTrayNotification(
+                "بکاپ همه دیتابیس‌ها",
+                $"{succeeded} موفق، {failed} ناموفق",
+                failed == 0 ? ToolTipIcon.Info : ToolTipIcon.Warning);
+
+            if (Visible)
+                await RefreshAllAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowTrayNotification("OdinVault", ex.Message, ToolTipIcon.Error);
+        }
+    }
+
+    private void ShowTrayNotification(string title, string message, ToolTipIcon icon)
+    {
+        if (!_settings.ShowTrayNotifications)
+            return;
+
+        _trayIcon.BalloonTipTitle = title;
+        _trayIcon.BalloonTipText = message.Length > 240 ? message[..240] : message;
+        _trayIcon.BalloonTipIcon = icon;
+        _trayIcon.ShowBalloonTip(4000);
+    }
+
+    private void ApplyTheme()
+    {
+        var dark = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        BackColor = dark
+            ? Color.FromArgb(24, 29, 38)
+            : Color.FromArgb(245, 247, 250);
+
+        ApplyThemeToContent();
+    }
+
+    private void ApplyThemeToContent()
+    {
+        var dark = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        var background = dark
+            ? Color.FromArgb(24, 29, 38)
+            : Color.FromArgb(245, 247, 250);
+        var surface = dark
+            ? Color.FromArgb(34, 41, 52)
+            : Color.White;
+        var primary = dark
+            ? Color.FromArgb(226, 232, 240)
+            : Color.FromArgb(45, 55, 70);
+        var secondary = dark
+            ? Color.FromArgb(164, 174, 188)
+            : Color.FromArgb(105, 115, 130);
+
+        _contentHost.BackColor = background;
+
+        ApplyThemeRecursive(_contentHost, dark, background, surface, primary, secondary);
+    }
+
+    private static void ApplyThemeRecursive(
+        Control control,
+        bool dark,
+        Color background,
+        Color surface,
+        Color primary,
+        Color secondary)
+    {
+        if (control is DataGridView grid)
+        {
+            grid.BackgroundColor = surface;
+            grid.GridColor = dark
+                ? Color.FromArgb(58, 67, 80)
+                : Color.FromArgb(228, 233, 240);
+            grid.ColumnHeadersDefaultCellStyle.BackColor = dark
+                ? Color.FromArgb(44, 52, 65)
+                : Color.FromArgb(241, 244, 248);
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = primary;
+            grid.DefaultCellStyle.BackColor = surface;
+            grid.DefaultCellStyle.ForeColor = primary;
+            grid.DefaultCellStyle.SelectionBackColor = dark
+                ? Color.FromArgb(59, 78, 104)
+                : Color.FromArgb(226, 235, 246);
+            grid.DefaultCellStyle.SelectionForeColor = primary;
+        }
+        else if (control is BackupChartControl chart)
+        {
+            chart.BackColor = surface;
+            chart.ForeColor = primary;
+            chart.Invalidate();
+        }
+        else if (control is TextBoxBase textBox)
+        {
+            textBox.BackColor = surface;
+            textBox.ForeColor = primary;
+        }
+        else if (control is ComboBox combo)
+        {
+            combo.BackColor = surface;
+            combo.ForeColor = primary;
+        }
+        else if (control is Label label)
+        {
+            if (label.ForeColor == Color.Empty ||
+                label.ForeColor == SystemColors.ControlText ||
+                label.ForeColor == Color.FromArgb(45, 55, 70) ||
+                label.ForeColor == Color.FromArgb(55, 65, 80) ||
+                label.ForeColor == Color.FromArgb(70, 80, 95) ||
+                label.ForeColor == Color.FromArgb(95, 105, 120) ||
+                label.ForeColor == Color.FromArgb(105, 115, 130) ||
+                label.ForeColor == Color.FromArgb(125, 135, 150) ||
+                label.ForeColor == Color.FromArgb(130, 140, 155))
+            {
+                label.ForeColor = label.Font.Bold ? primary : secondary;
+            }
+        }
+        else if (control is Panel or TableLayoutPanel or FlowLayoutPanel)
+        {
+            if (control.BackColor == Color.White ||
+                control.BackColor == Color.FromArgb(245, 247, 250) ||
+                control.BackColor == SystemColors.Control)
+            {
+                control.BackColor = control.Parent == null || control.Dock == DockStyle.Fill
+                    ? background
+                    : surface;
+            }
+        }
+
+        foreach (Control child in control.Controls)
+            ApplyThemeRecursive(child, dark, background, surface, primary, secondary);
+    }
 
     private Control BuildPlaceholderPage(string title, string description)
     {
