@@ -94,6 +94,32 @@ public sealed class BackupJobs(
 
                 break;
             }
+            catch (BackupPreflightException ex)
+            {
+                if (job is null)
+                {
+                    logger.LogError(ex, "Backup preflight failed before a durable job was available.");
+                    await DelayAfterFailureAsync(stoppingToken);
+                    continue;
+                }
+
+                logger.LogWarning(ex, "Backup preflight failed for job {JobId}.", job.Id);
+
+                if (job.ExecutionToken is Guid executionToken)
+                {
+                    var message = string.IsNullOrWhiteSpace(ex.Message)
+                        ? "پیش‌بررسی بکاپ ناموفق بود."
+                        : ex.Message.Trim();
+                    if (message.Length > 2000)
+                        message = message[..2000];
+
+                    await TryFailAsync(
+                        job.Id,
+                        executionToken,
+                        "preflight_failed",
+                        message);
+                }
+            }
             catch (Exception ex)
             {
                 if (job is null)

@@ -35,13 +35,25 @@ public sealed class BackupOrchestrator(
             ?? throw new NotSupportedException($"No backup provider is registered for {endpoint.Engine}.");
 
         var connection = ToConnectionInfo(endpoint);
-        var preflight = await provider.PreflightAsync(
-            new BackupExecutionRequest(
-                endpoint.Id,
-                connection,
-                policy.BackupDirectory,
-                policy.VerifyAfterBackup),
-            cancellationToken);
+        BackupPreflightResult preflight;
+        try
+        {
+            preflight = await provider.PreflightAsync(
+                new BackupExecutionRequest(
+                    endpoint.Id,
+                    connection,
+                    policy.BackupDirectory,
+                    policy.VerifyAfterBackup),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new BackupPreflightException(ex.Message, ex);
+        }
 
         logger.LogInformation(
             "Backup preflight passed for database {DatabaseId}. SQL {ProductVersion} {Edition}; database size {DatabaseSizeBytes}; destination free {DestinationFreeBytes}.",
@@ -236,3 +248,7 @@ public sealed class BackupOrchestrator(
         await db.SaveChangesAsync(cancellationToken);
     }
 }
+
+
+public sealed class BackupPreflightException(string message, Exception innerException)
+    : Exception(message, innerException);
