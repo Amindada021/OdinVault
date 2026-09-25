@@ -1,3 +1,6 @@
+using System.Text;
+using OdinVault.Core;
+
 namespace OdinVault.Agent;
 
 public static class ReplicaEndpoints
@@ -9,7 +12,9 @@ public static class ReplicaEndpoints
         app.MapPost("/api/replica/backups", async (HttpRequest request, CancellationToken ct) =>
         {
             var backupId = request.Headers["X-OdinVault-Backup-Id"].ToString();
-            var fileName = Path.GetFileName(request.Headers["X-OdinVault-File-Name"].ToString());
+            var encoded = request.Headers["X-OdinVault-Name-Encoding"] == "uri";
+            string Header(string name) => encoded ? Uri.UnescapeDataString(request.Headers[name].ToString()) : request.Headers[name].ToString();
+            var fileName = Path.GetFileName(Header("X-OdinVault-File-Name"));
             var expectedSizeText = request.Headers["X-OdinVault-File-Size"].ToString();
 
             if (string.IsNullOrWhiteSpace(backupId) || string.IsNullOrWhiteSpace(fileName))
@@ -19,9 +24,13 @@ public static class ReplicaEndpoints
                 return Results.BadRequest(new { message = "Invalid replica file size." });
 
             var safeId = Guid.TryParse(backupId, out var parsedId) ? parsedId.ToString("N") : Guid.NewGuid().ToString("N");
-            var finalName = $"{safeId}_{fileName}";
-            var finalPath = Path.Combine(replicaDirectory, finalName);
-            var partPath = finalPath + ".part";
+            var relative = encoded
+                ? Path.Combine(BackupNaming.SafeSegment(Header("X-OdinVault-Source")), BackupNaming.SafeSegment(Header("X-OdinVault-Database")), safeId, fileName)
+                : $"{safeId}_{fileName}";
+            var finalName = encoded ? "v2_" + Convert.ToBase64String(Encoding.UTF8.GetBytes(relative)).TrimEnd('=').Replace('+', '-').Replace('/', '_') : relative;
+            var finalPath = Path.Combine(replicaDirectory, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
+            var partPath = finalPath + "." + Guid.NewGuid().ToString("N") + ".part";
 
             try
             {
@@ -53,9 +62,8 @@ public static class ReplicaEndpoints
 
         app.MapGet("/api/replica/backups/{id}", (string id) =>
         {
-            var safeId = Path.GetFileName(id);
-            if (!string.Equals(id, safeId, StringComparison.Ordinal)) return Results.BadRequest();
-            var path = Path.Combine(replicaDirectory, safeId);
+            var path = ResolveReplicaPath(replicaDirectory, id);
+            if (path is null) return Results.BadRequest();
             return File.Exists(path)
                 ? Results.File(path, "application/octet-stream", enableRangeProcessing: true)
                 : Results.NotFound();
@@ -63,11 +71,29 @@ public static class ReplicaEndpoints
 
         app.MapDelete("/api/replica/backups/{id}", (string id) =>
         {
-            var safeId = Path.GetFileName(id);
-            if (!string.Equals(id, safeId, StringComparison.Ordinal)) return Results.BadRequest();
-            var path = Path.Combine(replicaDirectory, safeId);
+            var path = ResolveReplicaPath(replicaDirectory, id);
+            if (path is null) return Results.BadRequest();
             if (File.Exists(path)) File.Delete(path);
             return Results.NoContent();
         });
     }
+    private static string? ResolveReplicaPath(string root, string id)
+    {
+        try
+        {
+            var relative = id;
+            if (id.StartsWith("v2_", StringComparison.Ordinal))
+            {
+                var payload = id[3..].Replace('-', '+').Replace('_', '/');
+                relative = Encoding.UTF8.GetString(Convert.FromBase64String(payload.PadRight((payload.Length + 3) / 4 * 4, '=')));
+            }
+            else if (id != Path.GetFileName(id)) return null;
+            if (Path.IsPathRooted(relative) || relative.Split('/', '\\').Any(x => x is ".." or ".")) return null;
+            var full = Path.GetFullPath(Path.Combine(root, relative));
+            var prefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return full.StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ? full : null;
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or IOException) { return null; }
+    }
+
 }

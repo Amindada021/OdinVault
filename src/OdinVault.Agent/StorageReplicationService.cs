@@ -84,9 +84,10 @@ public sealed class StorageReplicationService(
 
         try
         {
+            var endpoint = await db.DatabaseEndpoints.FirstAsync(x => x.Id == backup.DatabaseEndpointId, cancellationToken);
             var provider = CreateProvider(target);
             var result = await provider.UploadAsync(
-                new StorageUploadRequest(backup.Id, backup.FileName, backup.FilePath, backup.FileName),
+                new StorageUploadRequest(backup.Id, backup.FileName, backup.FilePath, backup.FileName, endpoint.DatabaseName, Environment.MachineName),
                 cancellationToken);
 
             replica.Status = ReplicaStatus.Succeeded;

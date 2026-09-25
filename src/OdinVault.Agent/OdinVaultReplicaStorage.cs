@@ -22,7 +22,10 @@ public sealed class OdinVaultReplicaStorage(
         using var message = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/api/replica/backups");
         message.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
         message.Headers.TryAddWithoutValidation("X-OdinVault-Backup-Id", request.BackupRecordId.ToString());
-        message.Headers.TryAddWithoutValidation("X-OdinVault-File-Name", request.FileName);
+        message.Headers.TryAddWithoutValidation("X-OdinVault-File-Name", Uri.EscapeDataString(request.FileName));
+        message.Headers.TryAddWithoutValidation("X-OdinVault-Name-Encoding", "uri");
+        message.Headers.TryAddWithoutValidation("X-OdinVault-Database", Uri.EscapeDataString(request.DatabaseName ?? "database"));
+        message.Headers.TryAddWithoutValidation("X-OdinVault-Source", Uri.EscapeDataString(request.SourceName ?? "server"));
         message.Headers.TryAddWithoutValidation("X-OdinVault-File-Size", fileInfo.Length.ToString());
 
         await using var stream = new FileStream(

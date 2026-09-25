@@ -30,7 +30,7 @@ internal sealed class ScheduleEditor : UserControl
             "دستی",
             "روزانه یک‌بار",
             "روزانه دو بار",
-            "پیشرفته (Cron)"
+            "پیشرفته (UTC)"
         ]);
         _mode.SelectedIndex = 0;
         _mode.SelectedIndexChanged += (_, _) => RefreshModeUi();
@@ -69,18 +69,19 @@ internal sealed class ScheduleEditor : UserControl
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string? ScheduleCron
     {
-        get => BuildCron();
-        set => LoadCron(value);
+        get => ShiftCron(BuildCron(), -210);
+        set => LoadCron(ShiftCron(value, 210));
     }
 
-    public string DisplayText => FormatCron(BuildCron());
+    public string DisplayText => FormatCron(ScheduleCron);
 
     public static string FormatCron(string? cron)
     {
         if (string.IsNullOrWhiteSpace(cron))
             return "دستی";
 
-        var parts = cron.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        cron = ShiftCron(cron, 210);
+        var parts = cron!.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 5)
             return $"پیشرفته: {cron}";
 
@@ -103,6 +104,23 @@ internal sealed class ScheduleEditor : UserControl
         }
 
         return $"پیشرفته: {cron}";
+    }
+
+    private static string? ShiftCron(string? cron, int offset)
+    {
+        if (string.IsNullOrWhiteSpace(cron)) return cron;
+        var parts = cron.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5 || parts[2] != "*" || parts[3] != "*" || parts[4] != "*" ||
+            !int.TryParse(parts[0], out var minute) || minute is < 0 or > 59) return cron;
+        var hours = parts[1].Split(',');
+        if (hours.Length is < 1 or > 2) return cron;
+        var shifted = new List<int>();
+        foreach (var text in hours)
+        {
+            if (!int.TryParse(text, out var hour) || hour is < 0 or > 23) return cron;
+            shifted.Add((hour * 60 + minute + offset + 1440) % 1440);
+        }
+        return $"{shifted[0] % 60} {string.Join(",", shifted.Select(x => x / 60).OrderBy(x => x))} * * *";
     }
 
     private static DateTimePicker CreateTimePicker() => new()
@@ -154,7 +172,7 @@ internal sealed class ScheduleEditor : UserControl
             }
         }
 
-        _advancedCron.Text = cron.Trim();
+        _advancedCron.Text = ShiftCron(cron.Trim(), -210);
         _mode.SelectedIndex = 3;
         RefreshModeUi();
     }
@@ -166,7 +184,7 @@ internal sealed class ScheduleEditor : UserControl
             0 => null,
             1 => $"{_time1.Value.Minute} {_time1.Value.Hour} * * *",
             2 => BuildTwiceDailyCron(),
-            3 => string.IsNullOrWhiteSpace(_advancedCron.Text) ? null : _advancedCron.Text.Trim(),
+            3 => string.IsNullOrWhiteSpace(_advancedCron.Text) ? null : ShiftCron(_advancedCron.Text.Trim(), 210),
             _ => null
         };
     }
@@ -200,7 +218,7 @@ internal sealed class ScheduleEditor : UserControl
     {
         try
         {
-            _summary.Text = $"زمان‌بندی: {FormatCron(BuildCron())}";
+            _summary.Text = $"زمان‌بندی: {FormatCron(ScheduleCron)} — ساعت تهران (پیشرفته: UTC)";
         }
         catch (Exception ex)
         {

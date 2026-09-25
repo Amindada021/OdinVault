@@ -132,18 +132,15 @@ class ScheduleValue {
   }
 
   static TimeOfDay _localToUtc(TimeOfDay local) {
-    final now = DateTime.now();
-    final localDate = DateTime(now.year, now.month, now.day, local.hour, local.minute);
-    final utc = localDate.toUtc();
-    return TimeOfDay(hour: utc.hour, minute: utc.minute);
+    final minutes = (local.hour * 60 + local.minute - 210) % 1440;
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
   }
 
   static TimeOfDay _utcToLocal(TimeOfDay utc) {
-    final now = DateTime.now().toUtc();
-    final utcDate = DateTime.utc(now.year, now.month, now.day, utc.hour, utc.minute);
-    final local = utcDate.toLocal();
-    return TimeOfDay(hour: local.hour, minute: local.minute);
+    final minutes = (utc.hour * 60 + utc.minute + 210) % 1440;
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
   }
+
 }
 
 class ScheduleEditor extends StatefulWidget {
@@ -242,7 +239,7 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
         Text(
           value.mode == ScheduleMode.advanced
               ? 'Cron پیشرفته مستقیماً با UTC ذخیره می‌شود.'
-              : 'زمان انتخابی، زمان محلی گوشی است و OdinVault آن را خودکار به UTC تبدیل می‌کند.',
+              : 'همه ساعت‌ها به وقت تهران هستند؛ مستقل از ساعت گوشی و سرور.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],

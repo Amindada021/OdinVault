@@ -20,8 +20,7 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         CancellationToken cancellationToken = default)
     {
         var databaseName = request.Connection.DatabaseName;
-        var safeDatabaseName = SanitizeFileName(databaseName);
-        var fileName = $"{safeDatabaseName}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.bak";
+        var fileName = BackupNaming.Create(databaseName);
         var backupPath = Path.Combine(request.BackupDirectory, fileName);
 
         await using var connection = new SqlConnection(BuildConnectionString(request.Connection, "master"));

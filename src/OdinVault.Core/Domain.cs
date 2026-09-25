@@ -145,7 +145,9 @@ public sealed record StorageUploadRequest(
     Guid BackupRecordId,
     string FileName,
     string LocalPath,
-    string? DestinationPath = null);
+    string? DestinationPath = null,
+    string? DatabaseName = null,
+    string? SourceName = null);
 
 public sealed record StorageUploadResult(
     string Provider,
