@@ -120,7 +120,7 @@ public static class DatabaseOverviewEndpoints
 
             var latest = backups.FirstOrDefault();
             var latestReplicaRows = latest is null
-                ? []
+                ? replicas.Take(0).ToList()
                 : replicas
                     .Where(x => x.BackupRecordId == latest.Id)
                     .ToList();
