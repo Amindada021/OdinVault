@@ -112,6 +112,19 @@ internal sealed class OdinDialog : Form
     public static DialogResult Show(
         IWin32Window? owner,
         string text,
+        string caption,
+        MessageBoxButtons buttons,
+        MessageBoxIcon icon,
+        MessageBoxDefaultButton defaultButton)
+    {
+        using var dialog = new OdinDialog(text, caption, buttons, icon);
+        dialog.ApplyDefaultButton(defaultButton);
+        return owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+    }
+
+    public static DialogResult Show(
+        IWin32Window? owner,
+        string text,
         string caption)
         => Show(owner, text, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
@@ -126,6 +139,23 @@ internal sealed class OdinDialog : Form
 
     public static bool Confirm(IWin32Window? owner, string text, string caption = "OdinVault")
         => Show(owner, text, caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
+    private void ApplyDefaultButton(MessageBoxDefaultButton defaultButton)
+    {
+        var buttons = _buttons.Controls.OfType<Button>().ToArray();
+        if (buttons.Length == 0)
+            return;
+
+        var index = defaultButton switch
+        {
+            MessageBoxDefaultButton.Button2 => Math.Min(1, buttons.Length - 1),
+            MessageBoxDefaultButton.Button3 => Math.Min(2, buttons.Length - 1),
+            _ => 0
+        };
+
+        AcceptButton = buttons[index];
+        buttons[index].Select();
+    }
 
     private void AddButtons(MessageBoxButtons buttons, DialogPalette palette)
     {
