@@ -58,6 +58,27 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(JsonOptions, cancellationToken);
     }
 
+    public async Task<BackupReportResponse?> GetBackupReportAsync(
+        int days = 30,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDays = days switch
+        {
+            7 => 7,
+            90 => 90,
+            _ => 30
+        };
+
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Get,
+            $"api/reports/backup?days={normalizedDays}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<BackupReportResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
     public async Task<AlertsOverviewResponse?> GetAlertsAsync(
         bool includeRead = true,
         CancellationToken cancellationToken = default)
@@ -472,6 +493,52 @@ internal sealed record DashboardActivityResponse(
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
     string? Error);
+
+internal sealed record BackupReportResponse(
+    int RangeDays,
+    DateTime FromUtc,
+    DateTime ToUtc,
+    BackupReportSummaryResponse Summary,
+    IReadOnlyList<BackupReportDailyResponse> Daily,
+    IReadOnlyList<BackupReportDatabaseResponse> Databases);
+
+internal sealed record BackupReportSummaryResponse(
+    int TotalBackups,
+    int Succeeded,
+    int Failed,
+    int VerifyFailed,
+    int ReplicaFailed,
+    double? SuccessRate,
+    double? AverageDurationSeconds,
+    long TotalSuccessfulBytes,
+    int EnabledDatabases,
+    int ProtectedDatabases,
+    long? StorageFreeBytes);
+
+internal sealed record BackupReportDailyResponse(
+    DateTime DateUtc,
+    int Succeeded,
+    int Failed,
+    int VerifyFailed,
+    long TotalSizeBytes,
+    double? AverageDurationSeconds);
+
+internal sealed record BackupReportDatabaseResponse(
+    Guid DatabaseId,
+    string DatabaseName,
+    int TotalBackups,
+    int Succeeded,
+    int Failed,
+    int VerifyFailed,
+    int ReplicaFailed,
+    double? SuccessRate,
+    double? AverageDurationSeconds,
+    DateTime? LatestBackupAtUtc,
+    int? LatestBackupStatus,
+    long? LatestSizeBytes,
+    long? PreviousSizeBytes,
+    double? SizeGrowthPercent,
+    string Severity);
 
 internal sealed record AlertsOverviewResponse(
     DateTime Utc,
