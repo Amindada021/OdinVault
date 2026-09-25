@@ -1,3 +1,12 @@
+DateTime? parseAgentUtc(Object? value) {
+  final text = value?.toString();
+  if (text == null || text.isEmpty) return null;
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) return null;
+  if (parsed.isUtc || RegExp(r'[+-]\d\d:\d\d$').hasMatch(text)) return parsed.toUtc();
+  return DateTime.utc(parsed.year, parsed.month, parsed.day, parsed.hour, parsed.minute, parsed.second, parsed.millisecond, parsed.microsecond);
+}
+
 class OdinVaultServer {
   const OdinVaultServer({required this.id, required this.name, required this.baseUrl, required this.apiKey});
   final String id;
@@ -80,7 +89,7 @@ class OdinVaultBackup {
   factory OdinVaultBackup.fromJson(Map<String, dynamic> json) => OdinVaultBackup(
         id: json['id'].toString(), fileName: json['fileName']?.toString() ?? '', status: (json['status'] as num?)?.toInt() ?? 0,
         verificationStatus: (json['verificationStatus'] as num?)?.toInt() ?? 0, sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
-        startedAtUtc: DateTime.tryParse(json['startedAtUtc']?.toString() ?? ''), completedAtUtc: DateTime.tryParse(json['completedAtUtc']?.toString() ?? ''),
+        startedAtUtc: parseAgentUtc(json['startedAtUtc']), completedAtUtc: parseAgentUtc(json['completedAtUtc']),
         localFileAvailable: json['localFileAvailable'] == true, error: json['error']?.toString(),
       );
 }

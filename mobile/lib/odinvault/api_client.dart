@@ -132,6 +132,22 @@ class OdinVaultApiClient {
   Future<void> testDatabase(String id) async => _dio.post<Object>('/api/databases/$id/test');
   Future<OdinVaultBackup> backupNow(String id) async => OdinVaultBackup.fromJson(_json((await _dio.post<Object>('/api/databases/$id/backups')).data));
 
+  Future<Map<String, dynamic>> startBackupJob(String databaseId) async =>
+      _json((await _dio.post<Object>('/api/databases/$databaseId/backup-jobs')).data);
+
+  Future<Map<String, dynamic>> backupJob(String id) async =>
+      _json((await _dio.get<Object>('/api/backup-jobs/$id',
+          options: Options(receiveTimeout: const Duration(seconds: 20)))).data);
+
+  Future<void> downloadBackup(String id, String path, {
+    required ProgressCallback onProgress,
+    required CancelToken cancelToken,
+  }) async {
+    await _dio.download('/api/backups/$id/download', path,
+        onReceiveProgress: onProgress, cancelToken: cancelToken,
+        deleteOnError: true, options: Options(headers: {'Accept': 'application/octet-stream'}));
+  }
+
   Future<List<OdinVaultBackup>> backups(String id, {int take = 100}) async {
     final data = (await _dio.get<Object>('/api/databases/$id/backups', queryParameters: {'take': take})).data;
     if (data is! List) throw const OdinVaultApiException('پاسخ تاریخچه بکاپ نامعتبر است.');

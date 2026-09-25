@@ -63,6 +63,8 @@ builder.Services.AddScoped<StorageReplicationService>();
 builder.Services.AddScoped<BackupOrchestrator>();
 builder.Services.AddHostedService<BackupScheduler>();
 builder.Services.AddHostedService<ReplicationRetryWorker>();
+builder.Services.AddSingleton<BackupJobs>();
+builder.Services.AddHostedService<BackupJobs>(sp => sp.GetRequiredService<BackupJobs>());
 
 var app = builder.Build();
 
@@ -322,6 +324,7 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
     return Results.File(record.FilePath, "application/octet-stream", record.FileName, enableRangeProcessing: true);
 });
 
+app.MapBackupJobs();
 app.MapStorageEndpoints();
 app.MapReplicaTargetEndpoints();
 app.MapReplicaEndpoints(replicaDirectory);

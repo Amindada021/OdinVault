@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'backup_download.dart';
 
 import 'package:odinvault_mobile/odinvault/api_client.dart';
 import 'package:odinvault_mobile/odinvault/models.dart';
@@ -900,6 +901,18 @@ class _DatabasePageState extends State<DatabasePage> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      FilledButton.tonalIcon(
+                        onPressed: running || !database.isEnabled || !database.policyEnabled ? null : () async {
+                          setState(() => running = true);
+                          await showBackupDownload(context, api, databaseId: database.id);
+                          if (!mounted) return;
+                          setState(() => running = false);
+                          await load();
+                        },
+                        icon: const Icon(Icons.download_for_offline_outlined),
+                        label: const Text('بکاپ جدید و دانلود روی گوشی'),
+                      ),
                     ],
                   ),
                 ),
@@ -1756,8 +1769,19 @@ class _BackupTileState extends State<BackupTile> {
           '${_bytes(backup.sizeBytes)} • ${_formatDate(backup.completedAtUtc ?? backup.startedAtUtc)}',
         ),
         children: [
+          if (backup.status == 2 && backup.localFileAvailable)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton.icon(
+                onPressed: () => showBackupDownload(context, widget.api, backup: backup),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('دانلود این بکاپ روی گوشی'),
+              ),
+            )
+          else if (backup.status == 2)
+            const ListTile(title: Text('نسخه محلی این بکاپ دیگر روی سرور موجود نیست.')),
           ListTile(
-            title: const Text('Verify'),
+            title: const Text('بررسی سلامت'),
             trailing: Text(_verificationText(backup.verificationStatus)),
           ),
           if (backup.error != null)
@@ -2041,7 +2065,7 @@ String _bytes(int? value) {
 
 String _formatDate(DateTime? value) {
   if (value == null) return '-';
-  final local = value.toLocal();
+  final local = value.toUtc().add(const Duration(minutes: 210));
   String two(int x) => x.toString().padLeft(2, '0');
   return '${local.year}/${two(local.month)}/${two(local.day)}  ${two(local.hour)}:${two(local.minute)}';
 }

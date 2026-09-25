@@ -12,7 +12,7 @@ public sealed class BackupOrchestrator(
     StorageReplicationService replicationService,
     ILogger<BackupOrchestrator> logger)
 {
-    public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default)
+    public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default, IProgress<BackupProgress>? progress = null)
     {
         await using var lease = await executionCoordinator.TryAcquireAsync(databaseId, cancellationToken);
         if (lease is null)
@@ -44,7 +44,7 @@ public sealed class BackupOrchestrator(
         {
             var connection = ToConnectionInfo(endpoint);
             var result = await provider.CreateBackupAsync(
-                new BackupExecutionRequest(endpoint.Id, connection, policy.BackupDirectory, policy.VerifyAfterBackup),
+                new BackupExecutionRequest(endpoint.Id, connection, policy.BackupDirectory, policy.VerifyAfterBackup, progress),
                 cancellationToken);
 
             record.FileName = result.FileName;
@@ -56,7 +56,10 @@ public sealed class BackupOrchestrator(
             record.CompletedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
 
-            await replicationService.ReplicateAsync(record, cancellationToken);
+            // The local file is ready: clients may download while replication continues.
+            progress?.Report(new BackupProgress("replicating", null, record));
+            try { await replicationService.ReplicateAsync(record, cancellationToken); }
+            catch (Exception ex) { logger.LogError(ex, "Replication failed after local backup {BackupId} succeeded.", record.Id); }
             await CleanupRetentionAsync(endpoint.Id, policy.MaxLocalBackups, cancellationToken);
             return record;
         }
@@ -106,6 +109,8 @@ public sealed class BackupOrchestrator(
 
         foreach (var old in oldRecords)
         {
+            if (await db.BackupReplicas.AnyAsync(x => x.BackupRecordId == old.Id && x.Status != ReplicaStatus.Succeeded, cancellationToken))
+                continue;
             try
             {
                 if (!string.IsNullOrWhiteSpace(old.FilePath) && File.Exists(old.FilePath))

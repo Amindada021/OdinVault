@@ -25,7 +25,7 @@ public static class ReplicaEndpoints
 
             var safeId = Guid.TryParse(backupId, out var parsedId) ? parsedId.ToString("N") : Guid.NewGuid().ToString("N");
             var relative = encoded
-                ? Path.Combine(BackupNaming.SafeSegment(Header("X-OdinVault-Source")), BackupNaming.SafeSegment(Header("X-OdinVault-Database")), safeId, fileName)
+                ? Path.Combine(BackupNaming.SafeSegment(Header("X-OdinVault-Source")), BackupNaming.SafeSegment(Header("X-OdinVault-Database")), fileName)
                 : $"{safeId}_{fileName}";
             var finalName = encoded ? "v2_" + Convert.ToBase64String(Encoding.UTF8.GetBytes(relative)).TrimEnd('=').Replace('+', '-').Replace('/', '_') : relative;
             var finalPath = Path.Combine(replicaDirectory, relative);

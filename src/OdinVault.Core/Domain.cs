@@ -133,7 +133,8 @@ public sealed record BackupExecutionRequest(
     Guid DatabaseEndpointId,
     DatabaseConnectionInfo Connection,
     string BackupDirectory,
-    bool VerifyAfterBackup);
+    bool VerifyAfterBackup,
+    IProgress<BackupProgress>? Progress = null);
 
 public sealed record BackupExecutionResult(
     string FileName,
@@ -162,3 +163,5 @@ public interface IBackupStorageProvider
     Task DownloadToAsync(string remoteId, Stream destination, CancellationToken cancellationToken = default);
     Task DeleteAsync(string remoteId, CancellationToken cancellationToken = default);
 }
+
+public sealed record BackupProgress(string Stage, int? Percent = null, BackupRecord? Backup = null);

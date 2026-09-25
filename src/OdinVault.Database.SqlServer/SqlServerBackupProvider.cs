@@ -25,6 +25,16 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
 
         await using var connection = new SqlConnection(BuildConnectionString(request.Connection, "master"));
         await connection.OpenAsync(cancellationToken);
+        connection.InfoMessage += (_, args) =>
+        {
+            foreach (SqlError error in args.Errors)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(error.Message, @"(\d+)\s*(?:percent|%)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var percent))
+                    request.Progress?.Report(new BackupProgress("backup", Math.Clamp(percent, 0, 100)));
+            }
+        };
+        request.Progress?.Report(new BackupProgress("backup", 0));
 
         var quotedDatabase = new SqlCommandBuilder().QuoteIdentifier(databaseName);
         var backupSql = $"BACKUP DATABASE {quotedDatabase} TO DISK = @path WITH COPY_ONLY, INIT, COMPRESSION, CHECKSUM, STATS = 5;";
@@ -39,6 +49,7 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         if (request.VerifyAfterBackup)
         {
             verificationStatus = VerificationStatus.Pending;
+            request.Progress?.Report(new BackupProgress("verify"));
             await using var verifyCommand = new SqlCommand(
                 "RESTORE VERIFYONLY FROM DISK = @path WITH CHECKSUM;",
                 connection)
@@ -50,7 +61,7 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
             verificationStatus = VerificationStatus.Verified;
         }
 
-        var sizeBytes = await ReadBackupSizeAsync(connection, databaseName, backupPath, cancellationToken);
+        var sizeBytes = File.Exists(backupPath) ? new FileInfo(backupPath).Length : await ReadBackupSizeAsync(connection, databaseName, backupPath, cancellationToken);
 
         return new BackupExecutionResult(fileName, backupPath, sizeBytes, verificationStatus);
     }
