@@ -191,6 +191,53 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
             : await CurrentConflictAsync(id, executionToken, cancellationToken);
     }
 
+    public async Task<BackupJobMutationResult> AttachBackupRecordAsync(
+        Guid id,
+        Guid executionToken,
+        Guid backupRecordId,
+        string stage,
+        int? percent,
+        CancellationToken cancellationToken = default)
+    {
+        stage = ValidateStage(stage);
+        if (percent is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(percent), "Percent must be null or between 0 and 100.");
+
+        var existing = await db.BackupJobs.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var validation = ValidateRunningOwner(existing, executionToken);
+        if (validation is not null) return validation;
+
+        var now = DateTime.UtcNow;
+        var changed = await db.BackupJobs
+            .Where(x => x.Id == id &&
+                        x.Status == BackupJobStatus.Running &&
+                        x.ExecutionToken == executionToken &&
+                        db.BackupRecords.Any(backup =>
+                            backup.Id == backupRecordId &&
+                            backup.Status == BackupStatus.Succeeded &&
+                            backup.DatabaseEndpointId == x.DatabaseEndpointId))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Stage, stage)
+                .SetProperty(x => x.Percent, percent)
+                .SetProperty(x => x.BackupRecordId, backupRecordId)
+                .SetProperty(x => x.UpdatedAtUtc, now),
+                cancellationToken);
+
+        if (changed == 1)
+            return await UpdatedAsync(id, cancellationToken);
+
+        var current = await GetEntityAsync(id, cancellationToken);
+        if (current is null)
+            return new BackupJobMutationResult(BackupJobMutationStatus.NotFound, null);
+        if (current.Status != BackupJobStatus.Running)
+            return new BackupJobMutationResult(BackupJobMutationStatus.StateConflict, Snapshot(current));
+        if (current.ExecutionToken != executionToken)
+            return new BackupJobMutationResult(BackupJobMutationStatus.OwnershipConflict, Snapshot(current));
+
+        return new BackupJobMutationResult(BackupJobMutationStatus.ValidationConflict, Snapshot(current));
+    }
+
     public async Task<BackupJobMutationResult> FailQueuedAsync(
         Guid id,
         string errorCode,
