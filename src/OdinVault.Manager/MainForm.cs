@@ -91,6 +91,7 @@ internal sealed class MainForm : Form
     public MainForm()
     {
         _settings = _settingsStore.Load();
+        UiLayout.SetLanguage(_settings.Language);
 
         Text = "OdinVault Manager";
         StartPosition = FormStartPosition.CenterScreen;
@@ -105,6 +106,7 @@ internal sealed class MainForm : Form
         ApplyFormDirection();
 
         BuildUi();
+        ApplyLanguage();
         ConfigureTray();
         ApplyTheme();
 
@@ -2812,13 +2814,12 @@ internal sealed class MainForm : Form
 
     private void ApplyFormDirection()
     {
-        var rtl = UiText.IsPersian(_settings.Language);
-        RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
-        RightToLeftLayout = rtl;
+        UiLayout.Apply(this, _settings.Language, translateText: false);
     }
 
     private void ApplyLanguage()
     {
+        UiLayout.SetLanguage(_settings.Language);
         ApplyFormDirection();
 
         if (_navigationHost is not null)
@@ -2866,25 +2867,7 @@ internal sealed class MainForm : Form
 
     private static void ApplyDirectionRecursive(Control control, bool rtl, string language)
     {
-        if (control is not TextBoxBase and not ComboBox)
-            control.Text = UiText.TranslateLiteral(control.Text, language);
-
-        if (control is TextBoxBase or ComboBox)
-        {
-            // Technical fields explicitly configured as LTR keep their direction.
-            if (control.RightToLeft != RightToLeft.No)
-                control.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
-        }
-        else if (control is not ReaLTaiizor.Controls.HopeButton)
-        {
-            control.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
-        }
-
-        if (control is DataGridView grid)
-            grid.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
-
-        foreach (Control child in control.Controls)
-            ApplyDirectionRecursive(child, rtl, language);
+        UiLayout.Apply(control, language);
     }
 
     private void ApplyTheme()
