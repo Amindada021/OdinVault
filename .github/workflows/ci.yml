@@ -154,6 +154,10 @@ jobs:
         working-directory: mobile
         run: flutter analyze
 
+      - name: Test mobile connection handling
+        working-directory: mobile
+        run: flutter test
+
       - name: Build Android APK
         working-directory: mobile
         run: flutter build apk --release

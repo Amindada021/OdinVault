@@ -9,32 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-String normalizeAgentBaseUrl(String value) {
-  var normalized = value.trim();
-
-  if (normalized.startsWith('://')) {
-    normalized = 'http$normalized';
-  } else {
-    final lower = normalized.toLowerCase();
-    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
-      normalized = 'http://$normalized';
-    }
-  }
-
-  while (normalized.endsWith('/')) {
-    normalized = normalized.substring(0, normalized.length - 1);
-  }
-
-  final uri = Uri.tryParse(normalized);
-  if (uri == null ||
-      (uri.scheme != 'http' && uri.scheme != 'https') ||
-      uri.host.isEmpty) {
-    throw const OdinVaultApiException('آدرس Agent معتبر نیست.');
-  }
-
-  return normalized;
-}
-
 class OdinVaultApp extends StatelessWidget {
   const OdinVaultApp({super.key, this.home});
 
@@ -237,9 +211,11 @@ class _AddServerDialogState extends State<AddServerDialog> {
     );
 
     try {
-      if (!await OdinVaultApiClient(server).health()) {
+      final api = OdinVaultApiClient(server);
+      if (!await api.health()) {
         throw const OdinVaultApiException('Agent پاسخ سالم برنگرداند.');
       }
+      await api.databases();
       if (mounted) Navigator.pop(context, server);
     } catch (e) {
       if (mounted) setState(() => error = OdinVaultApiException.from(e).message);

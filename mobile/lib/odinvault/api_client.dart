@@ -1,23 +1,79 @@
+import 'package:flutter/foundation.dart';
 import 'package:odinvault_mobile/odinvault/models.dart';
 import 'package:dio/dio.dart';
+
+String normalizeAgentBaseUrl(String value) {
+  var normalized = value.replaceAll(RegExp(r'[‎‏‪-‮⁦-⁩]'), '').trim();
+  if (normalized.isEmpty) {
+    throw const OdinVaultApiException('آدرس Agent را وارد کنید.');
+  }
+
+  if (normalized.startsWith('://')) {
+    normalized = 'http$normalized';
+  } else {
+    final lower = normalized.toLowerCase();
+    if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+      normalized = 'http://$normalized';
+    }
+  }
+
+  while (normalized.endsWith('/')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+
+  final uri = Uri.tryParse(normalized);
+  if (uri == null ||
+      (uri.scheme != 'http' && uri.scheme != 'https') ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasQuery ||
+      uri.hasFragment ||
+      RegExp(r'\s').hasMatch(normalized)) {
+    throw const OdinVaultApiException('آدرس Agent معتبر نیست.');
+  }
+
+  return uri.toString();
+}
 
 class OdinVaultApiClient {
   OdinVaultApiClient(OdinVaultServer server)
       : _dio = Dio(BaseOptions(
-          baseUrl: server.baseUrl.replaceAll(RegExp(r'/$'), ''),
+          baseUrl: normalizeAgentBaseUrl(server.baseUrl),
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(minutes: 120),
           sendTimeout: const Duration(minutes: 120),
           headers: {'Accept': 'application/json', if (server.apiKey.isNotEmpty) 'X-OdinVault-Key': server.apiKey},
-        ));
+          followRedirects: false,
+        )) {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        if (kDebugMode) debugPrint('[OdinVault] ${options.method} ${safeRequestUri(options.uri)}');
+        handler.next(options);
+      },
+      onError: (error, handler) {
+        // Never log headers, payloads, raw errors, OAuth state, or server bodies.
+        if (kDebugMode) {
+          debugPrint('[OdinVault] ${safeRequestUri(error.requestOptions.uri)} '
+              'type=${error.type.name} status=${error.response?.statusCode ?? '-'}');
+        }
+        handler.next(error);
+      },
+    ));
+  }
   final Dio _dio;
   String get baseUrl => _dio.options.baseUrl;
 
-  Future<bool> health() async => (await _dio.get<Object>('/api/health')).statusCode == 200;
+  Future<bool> health() async {
+    final response = await _dio.get<Object>('/api/health',
+        options: Options(receiveTimeout: const Duration(seconds: 15)));
+    final data = response.data;
+    return response.statusCode == 200 && data is Map &&
+        data['service'] == 'OdinVault.Agent' && data['status'] == 'healthy';
+  }
 
   Future<List<OdinVaultDatabase>> databases() async {
     final data = (await _dio.get<Object>('/api/databases')).data;
-    if (data is! List) throw const OdinVaultApiException('Invalid database response.');
+    if (data is! List) throw const OdinVaultApiException('پاسخ لیست دیتابیس‌ها نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultDatabase.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
@@ -77,13 +133,13 @@ class OdinVaultApiClient {
 
   Future<List<OdinVaultBackup>> backups(String id, {int take = 100}) async {
     final data = (await _dio.get<Object>('/api/databases/$id/backups', queryParameters: {'take': take})).data;
-    if (data is! List) throw const OdinVaultApiException('Invalid backup history response.');
+    if (data is! List) throw const OdinVaultApiException('پاسخ تاریخچه بکاپ نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultBackup.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<OdinVaultStorageTarget>> storageTargets() async {
     final data = (await _dio.get<Object>('/api/storage-targets')).data;
-    if (data is! List) throw const OdinVaultApiException('Invalid storage target response.');
+    if (data is! List) throw const OdinVaultApiException('پاسخ مقصد ذخیره‌سازی نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultStorageTarget.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
@@ -143,20 +199,20 @@ class OdinVaultApiClient {
 
   Future<List<OdinVaultReplica>> replicas(String backupId) async {
     final data = (await _dio.get<Object>('/api/backups/$backupId/replicas')).data;
-    if (data is! List) throw const OdinVaultApiException('Invalid replica response.');
+    if (data is! List) throw const OdinVaultApiException('پاسخ نسخه پشتیبان ثانویه نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultReplica.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<OdinVaultReplica>> retryReplication(String backupId) async {
     final data = (await _dio.post<Object>('/api/backups/$backupId/replicate')).data;
-    if (data is! List) throw const OdinVaultApiException('Invalid replication response.');
+    if (data is! List) throw const OdinVaultApiException('پاسخ تکثیر بکاپ نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultReplica.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Map<String, dynamic> _json(Object? data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
-    throw const OdinVaultApiException('Invalid server response.');
+    throw const OdinVaultApiException('پاسخ سرور نامعتبر است.');
   }
 }
 
@@ -165,12 +221,33 @@ class OdinVaultApiException implements Exception {
   final String message;
   @override String toString() => message;
   static OdinVaultApiException from(Object error) {
+    if (error is OdinVaultApiException) return error;
     if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['message'] != null) return OdinVaultApiException(data['message'].toString());
-      if (error.response?.statusCode == 401) return const OdinVaultApiException('کلید API مربوط به Agent معتبر نیست.');
-      return OdinVaultApiException(error.message ?? 'اتصال به OdinVault Agent برقرار نشد.');
+      final status = error.response?.statusCode;
+      final message = status == 401
+          ? 'کلید API مربوط به Agent معتبر نیست.'
+          : status == 403
+              ? 'اجازه دسترسی به این بخش را ندارید.'
+              : switch (error.type) {
+                  DioExceptionType.connectionTimeout ||
+                  DioExceptionType.receiveTimeout ||
+                  DioExceptionType.sendTimeout => 'مهلت اتصال یا دریافت پاسخ از Agent تمام شد.',
+                  DioExceptionType.badCertificate => 'گواهی امنیتی Agent معتبر نیست.',
+                  DioExceptionType.cancel => 'درخواست لغو شد.',
+                  DioExceptionType.badResponse => 'Agent پاسخ ناموفق برگرداند (HTTP ${status ?? '-'}).',
+                  _ => 'اتصال به OdinVault Agent برقرار نشد.',
+                };
+      return OdinVaultApiException('$message\nآدرس درخواست: \u2066'
+          '${safeRequestUri(error.requestOptions.uri)}\u2069\nنوع خطا: ${error.type.name}');
     }
-    return OdinVaultApiException(error.toString());
+    return const OdinVaultApiException('عملیات انجام نشد. دوباره تلاش کنید.');
   }
+}
+
+// Query strings and OAuth state can contain credentials.
+String safeRequestUri(Uri uri) {
+  final path = uri.path.replaceAll(
+      RegExp(r'/google-drive/pair/status/[^/]+'), '/google-drive/pair/status/[redacted]');
+  return uri.replace(userInfo: '', path: path, query: '', fragment: '').toString()
+      .replaceFirst(RegExp(r'\?$'), '');
 }
