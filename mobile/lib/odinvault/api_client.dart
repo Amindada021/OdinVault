@@ -3,7 +3,7 @@ import 'package:odinvault_mobile/odinvault/models.dart';
 import 'package:dio/dio.dart';
 
 String normalizeAgentBaseUrl(String value) {
-  var normalized = value.replaceAll(RegExp(r'[‎‏‪-‮⁦-⁩]'), '').trim();
+  var normalized = value.replaceAll(RegExp(r'[\u200e\u200f\u202a-\u202e\u2066-\u2069]'), '').trim();
   if (normalized.isEmpty) {
     throw const OdinVaultApiException('آدرس Agent را وارد کنید.');
   }
@@ -71,8 +71,9 @@ class OdinVaultApiClient {
         data['service'] == 'OdinVault.Agent' && data['status'] == 'healthy';
   }
 
-  Future<List<OdinVaultDatabase>> databases() async {
-    final data = (await _dio.get<Object>('/api/databases')).data;
+  Future<List<OdinVaultDatabase>> databases({Duration? receiveTimeout}) async {
+    final data = (await _dio.get<Object>('/api/databases',
+        options: Options(receiveTimeout: receiveTimeout))).data;
     if (data is! List) throw const OdinVaultApiException('پاسخ لیست دیتابیس‌ها نامعتبر است.');
     return data.whereType<Map>().map((e) => OdinVaultDatabase.fromJson(Map<String, dynamic>.from(e))).toList();
   }
@@ -248,6 +249,5 @@ class OdinVaultApiException implements Exception {
 String safeRequestUri(Uri uri) {
   final path = uri.path.replaceAll(
       RegExp(r'/google-drive/pair/status/[^/]+'), '/google-drive/pair/status/[redacted]');
-  return uri.replace(userInfo: '', path: path, query: '', fragment: '').toString()
-      .replaceFirst(RegExp(r'\?$'), '');
+  return uri.replace(userInfo: '', path: path).removeFragment().toString().split('?').first;
 }

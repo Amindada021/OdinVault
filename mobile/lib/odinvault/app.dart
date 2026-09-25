@@ -82,7 +82,11 @@ class _ServersPageState extends State<ServersPage> {
 
     final next = [..._servers, server];
     await _store.save(next);
-    if (mounted) setState(() => _servers = next);
+    if (!mounted) return;
+    setState(() => _servers = next);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => AgentPage(server: server)),
+    );
   }
 
   Future<void> _remove(OdinVaultServer server) async {
@@ -215,7 +219,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       if (!await api.health()) {
         throw const OdinVaultApiException('Agent پاسخ سالم برنگرداند.');
       }
-      await api.databases();
+      await api.databases(receiveTimeout: const Duration(seconds: 15));
       if (mounted) Navigator.pop(context, server);
     } catch (e) {
       if (mounted) setState(() => error = OdinVaultApiException.from(e).message);
