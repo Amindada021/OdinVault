@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:odinvault_mobile/odinvault/models.dart';
 import 'package:dio/dio.dart';
@@ -132,8 +133,23 @@ class OdinVaultApiClient {
   Future<void> testDatabase(String id) async => _dio.post<Object>('/api/databases/$id/test');
   Future<OdinVaultBackup> backupNow(String id) async => OdinVaultBackup.fromJson(_json((await _dio.post<Object>('/api/databases/$id/backups')).data));
 
-  Future<Map<String, dynamic>> startBackupJob(String databaseId) async =>
-      _json((await _dio.post<Object>('/api/databases/$databaseId/backup-jobs')).data);
+  String createRequestId() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+    final value = bytes.map(hex).join();
+    return '${value.substring(0, 8)}-${value.substring(8, 12)}-${value.substring(12, 16)}-${value.substring(16, 20)}-${value.substring(20)}';
+  }
+
+  Future<Map<String, dynamic>> startBackupJob(
+    String databaseId, {
+    required String requestId,
+  }) async =>
+      _json((await _dio.post<Object>(
+        '/api/databases/$databaseId/backup-jobs',
+        options: Options(headers: {'X-OdinVault-Request-Id': requestId}),
+      )).data);
 
   Future<Map<String, dynamic>> backupJob(String id) async =>
       _json((await _dio.get<Object>('/api/backup-jobs/$id',
