@@ -414,8 +414,8 @@ internal sealed class MainForm : Form
             BackColor = Color.FromArgb(245, 247, 250)
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 400));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
 
         var kpis = new TableLayoutPanel
         {
@@ -531,6 +531,11 @@ internal sealed class MainForm : Form
 
     private void ConfigureCharts()
     {
+        _backupSizeChart.MinimumSize = new Size(0, 150);
+        _backupStatusChart.MinimumSize = new Size(0, 150);
+        _backupDurationChart.MinimumSize = new Size(0, 150);
+        _databaseSizeChart.MinimumSize = new Size(0, 150);
+
         _backupSizeChart.ChartTitle = "روند حجم بکاپ‌های موفق";
         _backupSizeChart.Kind = BackupChartKind.Line;
         _backupSizeChart.ValueFormatter = value => FormatBytes((long)value);
@@ -1771,8 +1776,8 @@ internal sealed class MainForm : Form
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 54));
 
         var toolbar = new FlowLayoutPanel
         {
@@ -1826,6 +1831,9 @@ internal sealed class MainForm : Form
         kpis.Controls.Add(BuildKpiCard("میانگین مدت", _reportAverageDuration, "Backupهای موفق"), 2, 0);
         kpis.Controls.Add(BuildKpiCard("دیتابیس محافظت‌شده", _reportProtected, "از کل دیتابیس فعال"), 3, 0);
         root.Controls.Add(kpis, 0, 1);
+
+        _reportStatusChart.MinimumSize = new Size(0, 190);
+        _reportSizeChart.MinimumSize = new Size(0, 190);
 
         _reportStatusChart.ChartTitle = "روند موفق / ناموفق / Verify ناموفق";
         _reportStatusChart.Kind = BackupChartKind.Bar;
