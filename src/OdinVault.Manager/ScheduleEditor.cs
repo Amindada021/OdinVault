@@ -312,7 +312,8 @@ internal sealed class ScheduleEditor : UserControl
             .OrderBy(x => x.TimeOfDay)
             .Last();
 
-        return DateTime.Today.Add((latest.TimeOfDay + TimeSpan.FromHours(4)) % TimeSpan.FromDays(1));
+        var minutes = ((int)latest.TimeOfDay.TotalMinutes + 240) % 1440;
+        return DateTime.Today.AddMinutes(minutes);
     }
 
     private void RefreshModeUi()
