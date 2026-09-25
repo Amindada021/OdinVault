@@ -385,11 +385,57 @@ app.MapPost("/api/databases/{id:guid}/test", async (Guid id, BackupOrchestrator 
     catch (Exception ex) { return Results.BadRequest(new { success = false, message = ex.Message }); }
 });
 
-app.MapPost("/api/databases/{id:guid}/backups", async (Guid id, BackupOrchestrator orchestrator, CancellationToken ct) =>
+app.MapPost("/api/databases/{id:guid}/backups", async (
+    Guid id,
+    HttpRequest request,
+    OdinVaultDbContext db,
+    IBackupJobStore jobs,
+    CancellationToken ct) =>
 {
-    try { return Results.Ok(await orchestrator.RunNowAsync(id, ct)); }
-    catch (KeyNotFoundException ex) { return Results.NotFound(new { message = ex.Message }); }
-    catch (Exception ex) { return Results.BadRequest(new { message = ex.Message }); }
+    var endpoint = await db.DatabaseEndpoints.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+    var policy = await db.BackupPolicies.AsNoTracking().FirstOrDefaultAsync(x => x.DatabaseEndpointId == id, ct);
+    if (endpoint is null)
+        return Results.NotFound(new { message = "Database endpoint was not found." });
+    if (!endpoint.IsEnabled || policy?.IsEnabled != true)
+        return Results.BadRequest(new { message = "Database or backup policy is disabled." });
+
+    var requestId = request.Headers.TryGetValue("X-OdinVault-Request-Id", out var values) &&
+                    Guid.TryParse(values.FirstOrDefault(), out var parsedRequestId) &&
+                    parsedRequestId != Guid.Empty
+        ? parsedRequestId
+        : Guid.NewGuid();
+
+    var enqueue = await jobs.EnqueueAsync(requestId, id, ct);
+    if (enqueue.Status == BackupJobEnqueueStatus.RequestConflict)
+        return Results.Conflict(new { message = "The request id was already used for another database." });
+    if (enqueue.Status == BackupJobEnqueueStatus.ActiveConflict)
+        return Results.Conflict(new { message = "A backup job is already queued or running for this database." });
+    if (enqueue.Status == BackupJobEnqueueStatus.QueueFull)
+        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    if (enqueue.Job is null)
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+
+    var jobId = enqueue.Job.Id;
+    while (true)
+    {
+        var job = await jobs.GetAsync(jobId, ct);
+        if (job is null)
+            return Results.NotFound(new { message = "Backup job was not found." });
+
+        if (job.Status == BackupJobStatus.Succeeded && job.BackupRecordId is Guid backupRecordId)
+        {
+            var backup = await db.BackupRecords.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == backupRecordId, ct);
+            return backup is null
+                ? Results.Problem("Backup job completed but its backup record was not found.")
+                : Results.Ok(backup);
+        }
+
+        if (job.Status is BackupJobStatus.Failed or BackupJobStatus.Interrupted)
+            return Results.BadRequest(new { message = job.ErrorMessage ?? "Backup did not complete successfully." });
+
+        await Task.Delay(500, ct);
+    }
 });
 
 app.MapGet("/api/databases/{id:guid}/backups", async (Guid id, int? take, OdinVaultDbContext db, CancellationToken ct) =>
