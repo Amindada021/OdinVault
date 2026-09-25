@@ -128,6 +128,7 @@ jobs:
         shell: bash
         run: |
           flutter create --platforms=android --org com.odinvault --project-name odinvault_mobile .
+          rm -f test/widget_test.dart
           python3 - <<'PY'
           from pathlib import Path
           path = Path("android/app/src/main/AndroidManifest.xml")
