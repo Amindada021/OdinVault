@@ -16,13 +16,20 @@ internal sealed class MainForm : Form
     private readonly Button _backupButton = new();
     private readonly Button _mobileConnectionButton = new();
     private readonly Button _updateButton = new();
+    private readonly Panel _contentHost = new();
+    private readonly Label _pageTitle = new();
+    private readonly Dictionary<string, Button> _navigationButtons = new(StringComparer.Ordinal);
 
     public MainForm()
     {
         Text = "OdinVault Manager";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(980, 620);
-        Size = new Size(1120, 720);
+        WindowState = FormWindowState.Maximized;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
+        MinimizeBox = true;
+        MinimumSize = new Size(1100, 700);
+        Size = new Size(1360, 840);
         Font = new Font("Segoe UI", 10F);
         RightToLeft = RightToLeft.Yes;
         RightToLeftLayout = true;
@@ -43,63 +50,322 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        var root = new TableLayoutPanel
+        BackColor = Color.FromArgb(245, 247, 250);
+
+        var shell = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230));
+        Controls.Add(shell);
+
+        var main = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
-            Padding = new Padding(18)
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = new Padding(24, 18, 24, 24),
+            BackColor = Color.FromArgb(245, 247, 250)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        shell.Controls.Add(main, 0, 0);
 
         var header = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 2
+            RowCount = 2,
+            Margin = Padding.Empty
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
 
-        var title = new Label
-        {
-            Text = "OdinVault",
-            AutoSize = true,
-            Font = new Font(Font.FontFamily, 22F, FontStyle.Bold),
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight
-        };
+        _pageTitle.Text = "داشبورد";
+        _pageTitle.AutoSize = false;
+        _pageTitle.Dock = DockStyle.Fill;
+        _pageTitle.Font = new Font(Font.FontFamily, 20F, FontStyle.Bold);
+        _pageTitle.TextAlign = ContentAlignment.BottomRight;
 
         _agentStatus.Text = "در حال بررسی Agent...";
-        _agentStatus.AutoSize = true;
+        _agentStatus.AutoSize = false;
         _agentStatus.Dock = DockStyle.Fill;
-        _agentStatus.TextAlign = ContentAlignment.MiddleRight;
+        _agentStatus.TextAlign = ContentAlignment.BottomLeft;
+        _agentStatus.Font = new Font(Font.FontFamily, 9.5F, FontStyle.Bold);
 
         _lastRefresh.Text = "";
-        _lastRefresh.AutoSize = true;
+        _lastRefresh.AutoSize = false;
         _lastRefresh.Dock = DockStyle.Fill;
-        _lastRefresh.TextAlign = ContentAlignment.MiddleLeft;
+        _lastRefresh.TextAlign = ContentAlignment.TopLeft;
+        _lastRefresh.ForeColor = Color.FromArgb(105, 115, 130);
 
-        header.Controls.Add(title, 0, 0);
-        header.SetColumnSpan(title, 2);
-        header.Controls.Add(_agentStatus, 0, 1);
+        var subtitle = new Label
+        {
+            Text = "مدیریت بکاپ، سلامت و ذخیره‌سازی",
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight,
+            ForeColor = Color.FromArgb(105, 115, 130)
+        };
+
+        header.Controls.Add(_pageTitle, 0, 0);
+        header.Controls.Add(_agentStatus, 1, 0);
+        header.Controls.Add(subtitle, 0, 1);
         header.Controls.Add(_lastRefresh, 1, 1);
-        root.Controls.Add(header, 0, 0);
+        main.Controls.Add(header, 0, 0);
+
+        _contentHost.Dock = DockStyle.Fill;
+        _contentHost.Margin = Padding.Empty;
+        _contentHost.Padding = Padding.Empty;
+        _contentHost.BackColor = Color.FromArgb(245, 247, 250);
+        main.Controls.Add(_contentHost, 0, 1);
+
+        var sidebar = BuildSidebar();
+        shell.Controls.Add(sidebar, 1, 0);
+
+        ConfigureDatabaseGrid();
+        ShowPage("dashboard");
+    }
+
+    private Control BuildSidebar()
+    {
+        var sidebar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(14, 18, 14, 14),
+            Margin = Padding.Empty,
+            BackColor = Color.FromArgb(27, 35, 48)
+        };
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
+
+        var brand = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty
+        };
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        brand.Controls.Add(new Label
+        {
+            Text = "OdinVault",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.BottomRight,
+            ForeColor = Color.White,
+            Font = new Font(Font.FontFamily, 16F, FontStyle.Bold)
+        }, 0, 0);
+        brand.Controls.Add(new Label
+        {
+            Text = "Backup Management",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight,
+            ForeColor = Color.FromArgb(150, 165, 185),
+            Font = new Font(Font.FontFamily, 8.5F)
+        }, 0, 1);
+        sidebar.Controls.Add(brand, 0, 0);
+
+        var navigation = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Margin = new Padding(0, 12, 0, 0),
+            Padding = Padding.Empty
+        };
+
+        AddNavigationButton(navigation, "dashboard", "داشبورد");
+        AddNavigationButton(navigation, "databases", "دیتابیس‌ها");
+        AddNavigationButton(navigation, "backups", "بکاپ‌ها");
+        AddNavigationButton(navigation, "storage", "ذخیره‌سازی");
+        AddNavigationButton(navigation, "restore", "بازیابی");
+        AddNavigationButton(navigation, "alerts", "هشدارها");
+        AddNavigationButton(navigation, "reports", "گزارش‌ها");
+        AddNavigationButton(navigation, "settings", "تنظیمات");
+        sidebar.Controls.Add(navigation, 0, 1);
+
+        var footer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 8, 0, 0),
+            BackColor = Color.FromArgb(34, 44, 60)
+        };
+        footer.Controls.Add(new Label
+        {
+            Text = "● Agent\r\nlocalhost:5188",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10, 8, 10, 8),
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(190, 205, 220),
+            Font = new Font(Font.FontFamily, 9F)
+        });
+        sidebar.Controls.Add(footer, 0, 2);
+
+        return sidebar;
+    }
+
+    private void AddNavigationButton(FlowLayoutPanel host, string key, string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 198,
+            Height = 44,
+            FlatStyle = FlatStyle.Flat,
+            TextAlign = ContentAlignment.MiddleRight,
+            Padding = new Padding(12, 0, 12, 0),
+            Margin = new Padding(0, 0, 0, 6),
+            BackColor = Color.FromArgb(27, 35, 48),
+            ForeColor = Color.FromArgb(218, 225, 235),
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(41, 53, 71);
+        button.Click += (_, _) => ShowPage(key);
+        _navigationButtons[key] = button;
+        host.Controls.Add(button);
+    }
+
+    private void ShowPage(string key)
+    {
+        foreach (var item in _navigationButtons)
+        {
+            var active = string.Equals(item.Key, key, StringComparison.Ordinal);
+            item.Value.BackColor = active
+                ? Color.FromArgb(47, 62, 83)
+                : Color.FromArgb(27, 35, 48);
+            item.Value.ForeColor = active ? Color.White : Color.FromArgb(218, 225, 235);
+        }
+
+        _contentHost.SuspendLayout();
+        try
+        {
+            _contentHost.Controls.Clear();
+
+            switch (key)
+            {
+                case "databases":
+                    _pageTitle.Text = "دیتابیس‌ها";
+                    _contentHost.Controls.Add(BuildDatabasesPage());
+                    break;
+                case "dashboard":
+                    _pageTitle.Text = "داشبورد";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "داشبورد OdinVault",
+                        "در مرحله بعد کارت‌های وضعیت، هشدارهای مهم و نمودارهای بکاپ اینجا قرار می‌گیرند."));
+                    break;
+                case "backups":
+                    _pageTitle.Text = "بکاپ‌ها";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "بکاپ‌ها و Jobها",
+                        "نمایش صف، بکاپ‌های در حال اجرا و تاریخچه در مرحله مربوط به این بخش اضافه می‌شود."));
+                    break;
+                case "storage":
+                    _pageTitle.Text = "ذخیره‌سازی";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "ذخیره‌سازی و Replica",
+                        "مدیریت Local، Google Drive و OdinVault Replica در این بخش قرار می‌گیرد."));
+                    break;
+                case "restore":
+                    _pageTitle.Text = "بازیابی";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "Restore",
+                        "Wizard بازیابی در مرحله Restore اضافه می‌شود."));
+                    break;
+                case "alerts":
+                    _pageTitle.Text = "هشدارها";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "هشدارها",
+                        "خطاهای بکاپ، فضای کم و وضعیت Replica اینجا نمایش داده می‌شوند."));
+                    break;
+                case "reports":
+                    _pageTitle.Text = "گزارش‌ها";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "گزارش‌ها",
+                        "تحلیل روند حجم، زمان و موفقیت بکاپ‌ها در مرحله Charts/Reports اضافه می‌شود."));
+                    break;
+                default:
+                    _pageTitle.Text = "تنظیمات";
+                    _contentHost.Controls.Add(BuildPlaceholderPage(
+                        "تنظیمات",
+                        "تنظیمات Agent، امنیت، اعلان‌ها و بروزرسانی در این بخش قرار می‌گیرند."));
+                    break;
+            }
+        }
+        finally
+        {
+            _contentHost.ResumeLayout();
+        }
+    }
+
+    private Control BuildPlaceholderPage(string title, string description)
+    {
+        var card = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(28),
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        var text = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 96,
+            Text = $"{title}\r\n\r\n{description}",
+            TextAlign = ContentAlignment.TopRight,
+            ForeColor = Color.FromArgb(70, 80, 95),
+            Font = new Font(Font.FontFamily, 11F)
+        };
+        card.Controls.Add(text);
+        return card;
+    }
+
+    private Control BuildDatabasesPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var actionsCard = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 14),
+            Padding = new Padding(14, 14, 14, 10),
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle
+        };
 
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = true,
-            AutoScroll = true
+            AutoScroll = true,
+            BackColor = Color.White
         };
 
         ConfigureButton(_refreshButton, "بروزرسانی", async (_, _) => await RefreshAllAsync());
         ConfigureButton(_addButton, "افزودن دستی", async (_, _) => await AddDatabaseAsync());
-        ConfigureButton(_discoverButton, "شناسایی دیتابیس‌های سرور", async (_, _) => await DiscoverDatabasesAsync());
+        ConfigureButton(_discoverButton, "شناسایی دیتابیس‌ها", async (_, _) => await DiscoverDatabasesAsync());
         ConfigureButton(_editButton, "ویرایش", async (_, _) => await EditSelectedAsync());
         ConfigureButton(_deleteButton, "حذف", async (_, _) => await DeleteSelectedAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
@@ -113,10 +379,38 @@ internal sealed class MainForm : Form
             using var dialog = new ReplicaSetupForm(_api);
             dialog.ShowDialog(this);
         });
-        actions.Controls.Add(storageButton);
-        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _mobileConnectionButton, _updateButton]);
-        root.Controls.Add(actions, 0, 1);
 
+        actions.Controls.Add(storageButton);
+        actions.Controls.AddRange(
+        [
+            _backupButton,
+            _testButton,
+            _deleteButton,
+            _editButton,
+            _discoverButton,
+            _addButton,
+            _refreshButton,
+            _mobileConnectionButton,
+            _updateButton
+        ]);
+        actionsCard.Controls.Add(actions);
+        root.Controls.Add(actionsCard, 0, 0);
+
+        var gridCard = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        gridCard.Controls.Add(_grid);
+        root.Controls.Add(gridCard, 0, 1);
+
+        return root;
+    }
+
+    private void ConfigureDatabaseGrid()
+    {
         _grid.Dock = DockStyle.Fill;
         _grid.ReadOnly = false;
         _grid.AllowUserToAddRows = false;
@@ -126,9 +420,18 @@ internal sealed class MainForm : Form
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.MultiSelect = false;
         _grid.RowHeadersVisible = false;
-        _grid.BackgroundColor = SystemColors.Window;
-        _grid.BorderStyle = BorderStyle.FixedSingle;
+        _grid.BackgroundColor = Color.White;
+        _grid.BorderStyle = BorderStyle.None;
         _grid.EditMode = DataGridViewEditMode.EditOnEnter;
+        _grid.ColumnHeadersHeight = 42;
+        _grid.RowTemplate.Height = 38;
+        _grid.EnableHeadersVisualStyles = false;
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 80);
+        _grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 235, 246);
+        _grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(30, 40, 55);
+        _grid.GridColor = Color.FromArgb(228, 233, 240);
+
         _grid.CurrentCellDirtyStateChanged += (_, _) =>
         {
             if (_grid.IsCurrentCellDirty && _grid.CurrentCell is DataGridViewCheckBoxCell)
@@ -150,8 +453,6 @@ internal sealed class MainForm : Form
         _grid.Columns.Add("Retention", "نگهداری");
         _grid.Columns.Add("بررسی سلامت", "بررسی سلامت");
         _grid.Columns.Add("Enabled", "فعال");
-
-        root.Controls.Add(_grid, 0, 2);
     }
 
     private static void ConfigureButton(Button button, string text, EventHandler handler)
@@ -160,6 +461,8 @@ internal sealed class MainForm : Form
         button.AutoSize = true;
         button.Height = 36;
         button.Padding = new Padding(12, 2, 12, 2);
+        button.FlatStyle = FlatStyle.System;
+        button.Click -= handler;
         button.Click += handler;
     }
 
