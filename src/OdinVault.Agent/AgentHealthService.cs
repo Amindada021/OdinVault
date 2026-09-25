@@ -11,6 +11,7 @@ public sealed record AgentPaths(
 
 public sealed record AgentHealthSnapshot(
     string Status,
+    string ProtectionStatus,
     DateTime Utc,
     bool SqliteAvailable,
     int EnabledDatabases,
@@ -105,6 +106,7 @@ public sealed class AgentHealthService(
                 replicaFreeBytes is < 512L * 1024 * 1024;
 
             return new AgentHealthSnapshot(
+                "healthy",
                 degraded ? "degraded" : "healthy",
                 now,
                 true,
@@ -131,6 +133,7 @@ public sealed class AgentHealthService(
 
     private AgentHealthSnapshot Unavailable(DateTime now) => new(
         "unhealthy",
+        "unknown",
         now,
         false,
         0,

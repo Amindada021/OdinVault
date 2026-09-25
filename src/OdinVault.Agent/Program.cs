@@ -104,6 +104,7 @@ app.MapGet("/api/health", async (AgentHealthService health, CancellationToken ct
     {
         service = "OdinVault.Agent",
         snapshot.Status,
+        snapshot.ProtectionStatus,
         snapshot.Utc,
         components = new
         {
