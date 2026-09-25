@@ -72,7 +72,7 @@ internal sealed class GitHubUpdateService : IDisposable
 
     public async Task<string> DownloadInstallerAsync(
         UpdateCheckResult update,
-        IProgress<int>? progress = null,
+        IProgress<UpdateDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(update.InstallerDownloadUrl))
@@ -122,8 +122,13 @@ internal sealed class GitHubUpdateService : IDisposable
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             readTotal += read;
 
-            if (total is > 0)
-                progress?.Report((int)Math.Clamp(readTotal * 100 / total.Value, 0, 100));
+            var percent = total is > 0
+                ? (int)Math.Clamp(readTotal * 100 / total.Value, 0, 100)
+                : 0;
+            progress?.Report(new UpdateDownloadProgress(
+                percent,
+                readTotal,
+                total));
         }
 
         await output.FlushAsync(cancellationToken);
@@ -200,6 +205,11 @@ internal sealed class GitHubUpdateService : IDisposable
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("browser_download_url")] string BrowserDownloadUrl);
 }
+
+internal sealed record UpdateDownloadProgress(
+    int Percent,
+    long BytesReceived,
+    long? TotalBytes);
 
 internal sealed record UpdateCheckResult(
     Version CurrentVersion,
