@@ -197,12 +197,16 @@ app.MapPost("/api/databases", async (CreateDatabaseRequest request, OdinVaultDbC
     if (validationError is not null)
         return Results.BadRequest(new { message = validationError });
 
+    var (normalizedHost, normalizedPort) = DatabaseIdentity.NormalizeSqlServerAddress(
+        request.Host,
+        request.Port);
+
     if (await HasDatabaseIdentityConflictAsync(
         db,
         null,
         DatabaseEngine.SqlServer,
-        request.Host,
-        request.Port,
+        normalizedHost,
+        normalizedPort,
         request.DatabaseName,
         ct))
     {
@@ -213,8 +217,8 @@ app.MapPost("/api/databases", async (CreateDatabaseRequest request, OdinVaultDbC
     {
         Name = request.Name.Trim(),
         Engine = DatabaseEngine.SqlServer,
-        Host = request.Host.Trim(),
-        Port = request.Port,
+        Host = normalizedHost,
+        Port = normalizedPort,
         DatabaseName = request.DatabaseName.Trim(),
         Username = request.Username?.Trim() ?? string.Empty,
         ProtectedPassword = string.IsNullOrEmpty(request.Password) ? null : protector.Protect(request.Password),
@@ -253,12 +257,16 @@ app.MapPut("/api/databases/{id:guid}", async (Guid id, UpdateDatabaseRequest req
     if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Host) || string.IsNullOrWhiteSpace(request.DatabaseName))
         return Results.BadRequest(new { message = "Name, host and databaseName are required." });
 
+    var (normalizedHost, normalizedPort) = DatabaseIdentity.NormalizeSqlServerAddress(
+        request.Host,
+        request.Port);
+
     if (await HasDatabaseIdentityConflictAsync(
         db,
         id,
         DatabaseEngine.SqlServer,
-        request.Host,
-        request.Port,
+        normalizedHost,
+        normalizedPort,
         request.DatabaseName,
         ct))
     {
@@ -266,8 +274,8 @@ app.MapPut("/api/databases/{id:guid}", async (Guid id, UpdateDatabaseRequest req
     }
 
     endpoint.Name = request.Name.Trim();
-    endpoint.Host = request.Host.Trim();
-    endpoint.Port = request.Port;
+    endpoint.Host = normalizedHost;
+    endpoint.Port = normalizedPort;
     endpoint.DatabaseName = request.DatabaseName.Trim();
     endpoint.Username = request.Username?.Trim() ?? string.Empty;
     endpoint.TrustServerCertificate = request.TrustServerCertificate;
