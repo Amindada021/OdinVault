@@ -33,7 +33,13 @@ internal sealed class MainForm : Form
     private readonly ComboBox _chartRange = new();
     private Control? _dashboardPage;
     private Control? _databasesPage;
+    private Control? _backupsPage;
     private Guid? _currentDetailsDatabaseId;
+    private readonly DataGridView _jobsGrid = new();
+    private readonly DataGridView _backupHistoryGrid = new();
+    private readonly ComboBox _backupDatabaseFilter = new();
+    private readonly ComboBox _backupStatusFilter = new();
+    private BackupOverviewResponse? _backupOverview;
 
     public MainForm()
     {
@@ -282,9 +288,9 @@ internal sealed class MainForm : Form
                     break;
                 case "backups":
                     _pageTitle.Text = "بکاپ‌ها";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "بکاپ‌ها و Jobها",
-                        "نمایش صف، بکاپ‌های در حال اجرا و تاریخچه در مرحله مربوط به این بخش اضافه می‌شود."));
+                    _backupsPage ??= BuildBackupsPage();
+                    _contentHost.Controls.Add(_backupsPage);
+                    _ = RefreshBackupsPageAsync();
                     break;
                 case "storage":
                     _pageTitle.Text = "ذخیره‌سازی";
@@ -746,6 +752,311 @@ internal sealed class MainForm : Form
     {
         var local = utc.Kind == DateTimeKind.Utc ? utc.ToLocalTime() : utc;
         return local.ToString("yyyy/MM/dd HH:mm");
+    }
+
+    private Control BuildBackupsPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(4)
+        };
+
+        var refresh = new Button
+        {
+            Text = "بروزرسانی",
+            AutoSize = true,
+            Height = 36
+        };
+        refresh.Click += async (_, _) => await RefreshBackupsPageAsync();
+
+        _backupDatabaseFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+        _backupDatabaseFilter.Width = 190;
+        _backupDatabaseFilter.SelectedIndexChanged += (_, _) => ApplyBackupsFilters();
+
+        _backupStatusFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+        _backupStatusFilter.Width = 150;
+        _backupStatusFilter.Items.AddRange(
+        [
+            "همه وضعیت‌ها",
+            "در صف",
+            "در حال اجرا",
+            "موفق",
+            "ناموفق",
+            "متوقف‌شده"
+        ]);
+        _backupStatusFilter.SelectedIndex = 0;
+        _backupStatusFilter.SelectedIndexChanged += (_, _) => ApplyBackupsFilters();
+
+        toolbar.Controls.Add(refresh);
+        toolbar.Controls.Add(_backupStatusFilter);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "وضعیت",
+            AutoSize = true,
+            Margin = new Padding(8, 9, 3, 0)
+        });
+        toolbar.Controls.Add(_backupDatabaseFilter);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "دیتابیس",
+            AutoSize = true,
+            Margin = new Padding(8, 9, 3, 0)
+        });
+        root.Controls.Add(toolbar, 0, 0);
+
+        ConfigureJobsGrid();
+        ConfigureBackupHistoryGrid();
+
+        root.Controls.Add(BuildBackupsSection("Jobها", _jobsGrid), 0, 1);
+        root.Controls.Add(BuildBackupsSection("تاریخچه بکاپ", _backupHistoryGrid), 0, 2);
+
+        return root;
+    }
+
+    private Control BuildBackupsSection(string title, Control content)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 6, 0, 6),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        card.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(14, 0, 14, 0),
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 11F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(45, 55, 70)
+        }, 0, 0);
+        card.Controls.Add(content, 0, 1);
+        return card;
+    }
+
+    private void ConfigureJobsGrid()
+    {
+        ConfigureReadOnlyGrid(_jobsGrid);
+        _jobsGrid.Columns.Clear();
+        _jobsGrid.Columns.Add("Database", "دیتابیس");
+        _jobsGrid.Columns.Add("Status", "وضعیت");
+        _jobsGrid.Columns.Add("Stage", "مرحله");
+        _jobsGrid.Columns.Add("Progress", "پیشرفت");
+        _jobsGrid.Columns.Add("Started", "شروع");
+        _jobsGrid.Columns.Add("Updated", "آخرین تغییر");
+        _jobsGrid.Columns.Add("Error", "خطا");
+    }
+
+    private void ConfigureBackupHistoryGrid()
+    {
+        ConfigureReadOnlyGrid(_backupHistoryGrid);
+        _backupHistoryGrid.Columns.Clear();
+        _backupHistoryGrid.Columns.Add("Database", "دیتابیس");
+        _backupHistoryGrid.Columns.Add("Date", "زمان");
+        _backupHistoryGrid.Columns.Add("Status", "وضعیت");
+        _backupHistoryGrid.Columns.Add("Verify", "Verify");
+        _backupHistoryGrid.Columns.Add("Size", "حجم");
+        _backupHistoryGrid.Columns.Add("Duration", "مدت");
+        _backupHistoryGrid.Columns.Add("Local", "فایل Local");
+        _backupHistoryGrid.Columns.Add("Error", "خطا");
+    }
+
+    private static void ConfigureReadOnlyGrid(DataGridView grid)
+    {
+        grid.Dock = DockStyle.Fill;
+        grid.ReadOnly = true;
+        grid.AllowUserToAddRows = false;
+        grid.AllowUserToDeleteRows = false;
+        grid.AllowUserToResizeRows = false;
+        grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        grid.MultiSelect = false;
+        grid.RowHeadersVisible = false;
+        grid.BackgroundColor = Color.White;
+        grid.BorderStyle = BorderStyle.None;
+        grid.EnableHeadersVisualStyles = false;
+        grid.ColumnHeadersHeight = 40;
+        grid.RowTemplate.Height = 34;
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
+        grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 80);
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 235, 246);
+        grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(30, 40, 55);
+        grid.GridColor = Color.FromArgb(228, 233, 240);
+    }
+
+    private async Task RefreshBackupsPageAsync()
+    {
+        try
+        {
+            _backupOverview = await _api.GetBackupOverviewAsync(300);
+            PopulateBackupDatabaseFilter();
+            ApplyBackupsFilters();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void PopulateBackupDatabaseFilter()
+    {
+        if (_backupOverview is null)
+            return;
+
+        var previous = _backupDatabaseFilter.SelectedItem as BackupDatabaseFilterItem;
+        var previousId = previous?.Id;
+
+        var databases = _backupOverview.Jobs
+            .Select(x => new BackupDatabaseFilterItem(x.DatabaseEndpointId, x.DatabaseName))
+            .Concat(_backupOverview.Backups.Select(x =>
+                new BackupDatabaseFilterItem(x.DatabaseEndpointId, x.DatabaseName)))
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .OrderBy(x => x.Name)
+            .ToList();
+
+        _backupDatabaseFilter.BeginUpdate();
+        _backupDatabaseFilter.Items.Clear();
+        _backupDatabaseFilter.Items.Add(new BackupDatabaseFilterItem(null, "همه دیتابیس‌ها"));
+        foreach (var item in databases)
+            _backupDatabaseFilter.Items.Add(item);
+
+        var selectedIndex = 0;
+        if (previousId.HasValue)
+        {
+            for (var i = 0; i < _backupDatabaseFilter.Items.Count; i++)
+            {
+                if (_backupDatabaseFilter.Items[i] is BackupDatabaseFilterItem item &&
+                    item.Id == previousId)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        _backupDatabaseFilter.SelectedIndex = selectedIndex;
+        _backupDatabaseFilter.EndUpdate();
+    }
+
+    private void ApplyBackupsFilters()
+    {
+        if (_backupOverview is null)
+            return;
+
+        var databaseId = (_backupDatabaseFilter.SelectedItem as BackupDatabaseFilterItem)?.Id;
+        var statusFilter = _backupStatusFilter.SelectedIndex - 1;
+
+        var jobs = _backupOverview.Jobs
+            .Where(x => !databaseId.HasValue || x.DatabaseEndpointId == databaseId.Value)
+            .Where(x => statusFilter < 0 || x.Status == statusFilter)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToList();
+
+        _jobsGrid.Rows.Clear();
+        foreach (var job in jobs)
+        {
+            var rowIndex = _jobsGrid.Rows.Add(
+                job.DatabaseName,
+                FormatJobStatus(job.Status),
+                FormatJobStage(job.Stage),
+                job.Percent.HasValue ? $"{job.Percent.Value}٪" : "—",
+                FormatDashboardTime(job.StartedAtUtc ?? job.CreatedAtUtc),
+                FormatDashboardTime(job.UpdatedAtUtc),
+                job.ErrorMessage ?? "—");
+
+            var row = _jobsGrid.Rows[rowIndex];
+            row.Tag = job.Id;
+            if (job.Status is 3 or 4)
+                row.DefaultCellStyle.ForeColor = Color.FromArgb(155, 55, 55);
+            else if (job.Status == 1)
+                row.DefaultCellStyle.ForeColor = Color.FromArgb(45, 95, 155);
+        }
+
+        var backups = _backupOverview.Backups
+            .Where(x => !databaseId.HasValue || x.DatabaseEndpointId == databaseId.Value)
+            .Where(x => statusFilter < 0 ||
+                        statusFilter == 2 && x.Status == 2 ||
+                        statusFilter == 3 && x.Status == 3)
+            .OrderByDescending(x => x.StartedAtUtc)
+            .ToList();
+
+        _backupHistoryGrid.Rows.Clear();
+        foreach (var backup in backups)
+        {
+            var duration = backup.CompletedAtUtc.HasValue
+                ? FormatDurationAxis(Math.Max(
+                    0,
+                    (backup.CompletedAtUtc.Value - backup.StartedAtUtc).TotalSeconds))
+                : "—";
+
+            var rowIndex = _backupHistoryGrid.Rows.Add(
+                backup.DatabaseName,
+                FormatDashboardTime(backup.CompletedAtUtc ?? backup.StartedAtUtc),
+                FormatBackupStatus(backup.Status),
+                FormatVerificationStatus(backup.VerificationStatus),
+                FormatBytes(backup.SizeBytes),
+                duration,
+                backup.LocalFileAvailable ? "موجود" : "حذف‌شده",
+                backup.Error ?? "—");
+
+            var row = _backupHistoryGrid.Rows[rowIndex];
+            row.Tag = backup.Id;
+            if (backup.Status == 3 || backup.VerificationStatus == 3)
+                row.DefaultCellStyle.ForeColor = Color.FromArgb(155, 55, 55);
+        }
+    }
+
+    private static string FormatJobStatus(int status) => status switch
+    {
+        0 => "در صف",
+        1 => "در حال اجرا",
+        2 => "موفق",
+        3 => "ناموفق",
+        4 => "متوقف‌شده",
+        _ => "نامشخص"
+    };
+
+    private static string FormatJobStage(string? stage) => stage?.ToLowerInvariant() switch
+    {
+        "queued" => "در صف",
+        "backup" => "ساخت بکاپ",
+        "verify" => "بررسی سلامت",
+        "replicating" => "ارسال Replica",
+        "retention" => "پاکسازی نگهداری",
+        "complete" => "کامل",
+        "failed" => "ناموفق",
+        "interrupted" => "متوقف‌شده",
+        _ => string.IsNullOrWhiteSpace(stage) ? "—" : stage
+    };
+
+    private sealed record BackupDatabaseFilterItem(Guid? Id, string Name)
+    {
+        public override string ToString() => Name;
     }
 
     private Control BuildPlaceholderPage(string title, string description)
