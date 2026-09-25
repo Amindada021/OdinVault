@@ -30,6 +30,26 @@ public sealed class BackupOrchestrator(
         var provider = providers.FirstOrDefault(x => x.Engine == endpoint.Engine)
             ?? throw new NotSupportedException($"No backup provider is registered for {endpoint.Engine}.");
 
+        var connection = ToConnectionInfo(endpoint);
+        var preflight = await provider.PreflightAsync(
+            new BackupExecutionRequest(
+                endpoint.Id,
+                connection,
+                policy.BackupDirectory,
+                policy.VerifyAfterBackup),
+            cancellationToken);
+
+        logger.LogInformation(
+            "Backup preflight passed for database {DatabaseId}. SQL {ProductVersion} {Edition}; database size {DatabaseSizeBytes}; destination free {DestinationFreeBytes}.",
+            endpoint.Id,
+            preflight.ProductVersion,
+            preflight.Edition,
+            preflight.DatabaseSizeBytes,
+            preflight.DestinationFreeBytes);
+
+        foreach (var warning in preflight.Warnings)
+            logger.LogWarning("Backup preflight warning for database {DatabaseId}: {Warning}", endpoint.Id, warning);
+
         var record = new BackupRecord
         {
             DatabaseEndpointId = endpoint.Id,
@@ -44,7 +64,6 @@ public sealed class BackupOrchestrator(
         BackupExecutionResult result;
         try
         {
-            var connection = ToConnectionInfo(endpoint);
             result = await provider.CreateBackupAsync(
                 new BackupExecutionRequest(endpoint.Id, connection, policy.BackupDirectory, policy.VerifyAfterBackup, progress),
                 cancellationToken);

@@ -15,6 +15,122 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         await command.ExecuteScalarAsync(cancellationToken);
     }
 
+    public async Task<BackupPreflightResult> PreflightAsync(
+        BackupExecutionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.BackupDirectory))
+            throw new InvalidOperationException("Backup directory is not configured.");
+
+        if (!Directory.Exists(request.BackupDirectory))
+            throw new InvalidOperationException("Backup directory does not exist or is not accessible by the OdinVault Agent.");
+
+        var probePath = Path.Combine(request.BackupDirectory, $".odinvault-write-test-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using (var probe = new FileStream(
+                probePath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1,
+                useAsync: true))
+            {
+                await probe.FlushAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            throw new InvalidOperationException(
+                "Backup directory is not writable by the OdinVault Agent service account.",
+                ex);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(probePath))
+                    File.Delete(probePath);
+            }
+            catch
+            {
+                // Cleanup failure must not hide the actual preflight result.
+            }
+        }
+
+        await using var connection = new SqlConnection(BuildConnectionString(request.Connection, "master"));
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = """
+SELECT
+    CONVERT(nvarchar(128), SERVERPROPERTY('ProductVersion')) AS ProductVersion,
+    CONVERT(nvarchar(256), SERVERPROPERTY('Edition')) AS Edition,
+    d.state_desc,
+    HAS_PERMS_BY_NAME(QUOTENAME(d.name), 'DATABASE', 'BACKUP DATABASE') AS CanBackup,
+    (
+        SELECT SUM(CONVERT(bigint, mf.size)) * 8192
+        FROM sys.master_files mf
+        WHERE mf.database_id = d.database_id
+    ) AS DatabaseSizeBytes
+FROM sys.databases d
+WHERE d.name = @databaseName;
+""";
+
+        await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@databaseName", request.Connection.DatabaseName);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException("Database was not found on the SQL Server.");
+
+        var productVersion = reader.IsDBNull(0) ? "unknown" : reader.GetString(0);
+        var edition = reader.IsDBNull(1) ? "unknown" : reader.GetString(1);
+        var state = reader.IsDBNull(2) ? "UNKNOWN" : reader.GetString(2);
+        var canBackup = !reader.IsDBNull(3) && Convert.ToInt32(reader.GetValue(3)) == 1;
+        var databaseSizeBytes = reader.IsDBNull(4) ? (long?)null : Convert.ToInt64(reader.GetValue(4));
+
+        if (!string.Equals(state, "ONLINE", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Database is not ONLINE. Current state: {state}.");
+
+        if (!canBackup)
+            throw new InvalidOperationException("The SQL credential does not have BACKUP DATABASE permission.");
+
+        long? destinationFreeBytes = null;
+        var warnings = new List<string>();
+
+        try
+        {
+            var fullPath = Path.GetFullPath(request.BackupDirectory);
+            var root = Path.GetPathRoot(fullPath);
+            if (!string.IsNullOrWhiteSpace(root))
+                destinationFreeBytes = new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            warnings.Add("Destination free space could not be measured by the Agent.");
+        }
+
+        const long minimumFreeBytes = 256L * 1024 * 1024;
+        if (destinationFreeBytes is < minimumFreeBytes)
+            throw new InvalidOperationException("Backup destination has less than 256 MB free space.");
+
+        if (databaseSizeBytes is > 0 &&
+            destinationFreeBytes is > 0 &&
+            destinationFreeBytes < databaseSizeBytes)
+        {
+            warnings.Add("Destination free space is smaller than the database's allocated size; compression may still allow the backup to succeed.");
+        }
+
+        warnings.Add("SQL Server service-account write permission to the destination is finally proven only by the backup command itself.");
+
+        return new BackupPreflightResult(
+            productVersion,
+            edition,
+            databaseSizeBytes,
+            destinationFreeBytes,
+            warnings);
+    }
+
     public async Task<BackupExecutionResult> CreateBackupAsync(
         BackupExecutionRequest request,
         CancellationToken cancellationToken = default)

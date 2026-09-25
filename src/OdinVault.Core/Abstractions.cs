@@ -10,5 +10,6 @@ public interface IDatabaseBackupProvider
 {
     DatabaseEngine Engine { get; }
     Task TestConnectionAsync(DatabaseConnectionInfo connection, CancellationToken cancellationToken = default);
+    Task<BackupPreflightResult> PreflightAsync(BackupExecutionRequest request, CancellationToken cancellationToken = default);
     Task<BackupExecutionResult> CreateBackupAsync(BackupExecutionRequest request, CancellationToken cancellationToken = default);
 }

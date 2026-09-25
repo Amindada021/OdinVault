@@ -136,6 +136,13 @@ public sealed record BackupExecutionRequest(
     bool VerifyAfterBackup,
     IProgress<BackupProgress>? Progress = null);
 
+public sealed record BackupPreflightResult(
+    string ProductVersion,
+    string Edition,
+    long? DatabaseSizeBytes,
+    long? DestinationFreeBytes,
+    IReadOnlyList<string> Warnings);
+
 public sealed record BackupExecutionResult(
     string FileName,
     string FilePath,
