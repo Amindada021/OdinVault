@@ -13,11 +13,11 @@ String normalizeAgentBaseUrl(String value) {
   var normalized = value.trim();
 
   if (normalized.startsWith('://')) {
-    normalized = 'http' + normalized;
+    normalized = 'http$normalized';
   } else {
     final lower = normalized.toLowerCase();
     if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
-      normalized = 'http://' + normalized;
+      normalized = 'http://$normalized';
     }
   }
 
