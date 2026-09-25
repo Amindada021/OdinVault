@@ -51,6 +51,21 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(JsonOptions, cancellationToken);
     }
 
+    public async Task<BackupOverviewResponse?> GetBackupOverviewAsync(
+        int take = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTake = Math.Clamp(take, 20, 500);
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Get,
+            $"api/backups/overview?take={normalizedTake}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<BackupOverviewResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<DatabaseResponse>> GetDatabasesAsync(CancellationToken cancellationToken = default)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Get, "api/databases");
@@ -344,6 +359,38 @@ internal sealed record DashboardActivityResponse(
     long? SizeBytes,
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
+    string? Error);
+
+internal sealed record BackupOverviewResponse(
+    DateTime Utc,
+    IReadOnlyList<BackupJobOverviewResponse> Jobs,
+    IReadOnlyList<BackupHistoryOverviewResponse> Backups);
+
+internal sealed record BackupJobOverviewResponse(
+    Guid Id,
+    Guid DatabaseEndpointId,
+    string DatabaseName,
+    int Status,
+    string Stage,
+    int? Percent,
+    DateTime CreatedAtUtc,
+    DateTime? StartedAtUtc,
+    DateTime UpdatedAtUtc,
+    DateTime? CompletedAtUtc,
+    Guid? BackupRecordId,
+    string? ErrorCode,
+    string? ErrorMessage);
+
+internal sealed record BackupHistoryOverviewResponse(
+    Guid Id,
+    Guid DatabaseEndpointId,
+    string DatabaseName,
+    int Status,
+    int VerificationStatus,
+    long? SizeBytes,
+    DateTime StartedAtUtc,
+    DateTime? CompletedAtUtc,
+    bool LocalFileAvailable,
     string? Error);
 
 internal sealed record DatabaseOverviewResponse(
