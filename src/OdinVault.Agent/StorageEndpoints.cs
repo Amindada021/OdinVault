@@ -9,6 +9,83 @@ public static class StorageEndpoints
 {
     public static void MapStorageEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/storage/overview", async (
+            OdinVaultDbContext db,
+            AgentPaths paths,
+            CancellationToken ct) =>
+        {
+            var targets = await db.StorageTargets
+                .AsNoTracking()
+                .OrderBy(x => x.Name)
+                .ToListAsync(ct);
+
+            var targetIds = targets.Select(x => x.Id).ToList();
+            var replicas = await db.BackupReplicas
+                .AsNoTracking()
+                .Where(x => targetIds.Contains(x.StorageTargetId))
+                .OrderByDescending(x => x.StartedAtUtc)
+                .ToListAsync(ct);
+
+            var links = await db.DatabaseStorageTargets
+                .AsNoTracking()
+                .Where(x => targetIds.Contains(x.StorageTargetId) && x.IsEnabled)
+                .ToListAsync(ct);
+
+            var localFreeBytes = TryGetAvailableFreeSpace(paths.StorageDirectory);
+
+            var items = targets.Select(target =>
+            {
+                var targetReplicas = replicas
+                    .Where(x => x.StorageTargetId == target.Id)
+                    .ToList();
+                var latest = targetReplicas.FirstOrDefault();
+                var latestSuccess = targetReplicas
+                    .Where(x => x.Status == ReplicaStatus.Succeeded)
+                    .OrderByDescending(x => x.CompletedAtUtc ?? x.StartedAtUtc)
+                    .FirstOrDefault();
+                var latestFailure = targetReplicas
+                    .Where(x => x.Status == ReplicaStatus.Failed)
+                    .OrderByDescending(x => x.CompletedAtUtc ?? x.StartedAtUtc)
+                    .FirstOrDefault();
+
+                return new
+                {
+                    target.Id,
+                    target.Name,
+                    type = (int)target.Type,
+                    target.IsEnabled,
+                    target.FolderId,
+                    target.AccountEmail,
+                    target.BaseUrl,
+                    isConnected = target.Type == StorageProviderType.GoogleDrive
+                        ? target.ProtectedRefreshToken != null
+                        : target.Type == StorageProviderType.OdinVaultReplica
+                            ? target.ProtectedApiKey != null
+                            : true,
+                    linkedDatabases = links.Count(x => x.StorageTargetId == target.Id),
+                    succeededReplicas = targetReplicas.Count(x => x.Status == ReplicaStatus.Succeeded),
+                    failedReplicas = targetReplicas.Count(x => x.Status == ReplicaStatus.Failed),
+                    lastActivityAtUtc = latest?.CompletedAtUtc ?? latest?.StartedAtUtc,
+                    lastSuccessAtUtc = latestSuccess?.CompletedAtUtc ?? latestSuccess?.StartedAtUtc,
+                    lastFailureAtUtc = latestFailure?.CompletedAtUtc ?? latestFailure?.StartedAtUtc,
+                    lastError = latestFailure?.Error
+                };
+            }).ToArray();
+
+            return Results.Ok(new
+            {
+                local = new
+                {
+                    name = "Local Storage",
+                    directory = paths.StorageDirectory,
+                    freeBytes = localFreeBytes,
+                    exists = Directory.Exists(paths.StorageDirectory),
+                    writable = CanWriteDirectory(paths.StorageDirectory)
+                },
+                targets = items
+            });
+        });
+
         app.MapGet("/api/storage-targets", async (OdinVaultDbContext db, CancellationToken ct) =>
         {
             var items = await db.StorageTargets
@@ -161,6 +238,7 @@ public static class StorageEndpoints
             Guid id,
             UpdateStorageTargetRequest request,
             OdinVaultDbContext db,
+            ISecretProtector protector,
             CancellationToken ct) =>
         {
             var target = await db.StorageTargets.FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -172,8 +250,101 @@ public static class StorageEndpoints
             target.Name = request.Name.Trim();
             target.FolderId = string.IsNullOrWhiteSpace(request.FolderId) ? null : request.FolderId.Trim();
             target.IsEnabled = request.IsEnabled;
+
+            if (target.Type == StorageProviderType.OdinVaultReplica)
+            {
+                if (!string.IsNullOrWhiteSpace(request.BaseUrl))
+                {
+                    if (!Uri.TryCreate(request.BaseUrl.Trim(), UriKind.Absolute, out var uri) ||
+                        (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                    {
+                        return Results.BadRequest(new { message = "baseUrl must be an absolute HTTP or HTTPS URL." });
+                    }
+
+                    target.BaseUrl = request.BaseUrl.Trim().TrimEnd('/');
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.ApiKey))
+                    target.ProtectedApiKey = protector.Protect(request.ApiKey.Trim());
+            }
+
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { target.Id, target.Name, target.Type, target.FolderId, target.AccountEmail, target.BaseUrl, target.IsEnabled });
+            return Results.Ok(new
+            {
+                target.Id,
+                target.Name,
+                target.Type,
+                target.FolderId,
+                target.AccountEmail,
+                target.BaseUrl,
+                target.IsEnabled
+            });
+        });
+
+        app.MapPost("/api/storage-targets/{id:guid}/connection-test", async (
+            Guid id,
+            OdinVaultDbContext db,
+            ISecretProtector protector,
+            GoogleDriveOAuthService oauth,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken ct) =>
+        {
+            var target = await db.StorageTargets
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (target is null)
+                return Results.NotFound(new { message = "Storage target was not found." });
+
+            try
+            {
+                switch (target.Type)
+                {
+                    case StorageProviderType.GoogleDrive:
+                    {
+                        if (string.IsNullOrWhiteSpace(target.ProtectedRefreshToken))
+                            return Results.BadRequest(new { message = "Google Drive target is not connected." });
+
+                        var refreshToken = protector.Unprotect(target.ProtectedRefreshToken);
+                        using var drive = oauth.CreateDriveService(refreshToken);
+                        var request = drive.Files.List();
+                        request.PageSize = 1;
+                        request.Fields = "files(id)";
+                        await request.ExecuteAsync(ct);
+                        return Results.Ok(new { success = true, message = "Google Drive connection succeeded." });
+                    }
+
+                    case StorageProviderType.OdinVaultReplica:
+                    {
+                        if (string.IsNullOrWhiteSpace(target.BaseUrl) ||
+                            string.IsNullOrWhiteSpace(target.ProtectedApiKey))
+                        {
+                            return Results.BadRequest(new { message = "Replica target is incomplete." });
+                        }
+
+                        var apiKey = protector.Unprotect(target.ProtectedApiKey);
+                        var client = httpClientFactory.CreateClient("OdinVaultReplica");
+                        using var request = new HttpRequestMessage(
+                            HttpMethod.Get,
+                            $"{target.BaseUrl.TrimEnd('/')}/api/health");
+                        request.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
+                        using var response = await client.SendAsync(request, ct);
+                        return Results.Ok(new
+                        {
+                            success = response.IsSuccessStatusCode,
+                            message = response.IsSuccessStatusCode
+                                ? "OdinVault Replica connection succeeded."
+                                : $"Replica returned HTTP {(int)response.StatusCode}."
+                        });
+                    }
+
+                    default:
+                        return Results.BadRequest(new { message = "This storage target does not support connection testing." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new { success = false, message = ex.Message });
+            }
         });
 
         app.MapDelete("/api/storage-targets/{id:guid}", async (
@@ -299,9 +470,45 @@ public static class StorageEndpoints
             return Results.Ok(replicas);
         });
     }
+    private static long? TryGetAvailableFreeSpace(string directory)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(directory));
+            return string.IsNullOrWhiteSpace(root)
+                ? null
+                : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static bool CanWriteDirectory(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var probe = Path.Combine(directory, $".odinvault-storage-test-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(probe, string.Empty);
+            File.Delete(probe);
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or ArgumentException)
+        {
+            return false;
+        }
+    }
 }
+
 
 public sealed record StartGoogleDrivePairingRequest(string TargetName, string RedirectUri, string? FolderId);
 public sealed record CompleteGoogleDrivePairingRequest(string State, string Code, string? AccountEmail);
-public sealed record UpdateStorageTargetRequest(string Name, string? FolderId, bool IsEnabled);
+public sealed record UpdateStorageTargetRequest(
+    string Name,
+    string? FolderId,
+    bool IsEnabled,
+    string? BaseUrl = null,
+    string? ApiKey = null);
 public sealed record LinkStorageTargetRequest(bool IsEnabled = true);
