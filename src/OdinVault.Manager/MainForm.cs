@@ -25,6 +25,11 @@ internal sealed class MainForm : Form
     private readonly Label _storageValue = new();
     private readonly FlowLayoutPanel _attentionList = new();
     private readonly FlowLayoutPanel _activityList = new();
+    private readonly BackupChartControl _backupSizeChart = new();
+    private readonly BackupChartControl _backupStatusChart = new();
+    private readonly BackupChartControl _backupDurationChart = new();
+    private readonly BackupChartControl _databaseSizeChart = new();
+    private readonly ComboBox _chartRange = new();
     private Control? _dashboardPage;
     private Control? _databasesPage;
 
@@ -323,12 +328,13 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var kpis = new TableLayoutPanel
@@ -347,6 +353,69 @@ internal sealed class MainForm : Form
         kpis.Controls.Add(BuildKpiCard("Jobهای فعال", _activeJobsValue, "در صف یا در حال اجرا"), 2, 0);
         kpis.Controls.Add(BuildKpiCard("فضای آزاد بکاپ", _storageValue, "فضای مقصد محلی Agent"), 3, 0);
         root.Controls.Add(kpis, 0, 0);
+
+        var chartsContainer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 0, 0, 16),
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        chartsContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        chartsContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var chartToolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = new Padding(4, 2, 4, 2)
+        };
+        chartToolbar.Controls.Add(new Label
+        {
+            Text = "بازه نمودارها",
+            AutoSize = true,
+            Margin = new Padding(8, 8, 4, 0),
+            ForeColor = Color.FromArgb(95, 105, 120)
+        });
+
+        _chartRange.DropDownStyle = ComboBoxStyle.DropDownList;
+        _chartRange.Width = 110;
+        _chartRange.Items.Clear();
+        _chartRange.Items.AddRange(["۷ روز اخیر", "۳۰ روز اخیر"]);
+        _chartRange.SelectedIndex = 1;
+        _chartRange.SelectedIndexChanged += async (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+                await RefreshDashboardChartsAsync();
+        };
+        chartToolbar.Controls.Add(_chartRange);
+        chartsContainer.Controls.Add(chartToolbar, 0, 0);
+
+        ConfigureCharts();
+
+        var charts = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        charts.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        charts.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+        charts.Controls.Add(_backupSizeChart, 0, 0);
+        charts.Controls.Add(_backupStatusChart, 1, 0);
+        charts.Controls.Add(_backupDurationChart, 0, 1);
+        charts.Controls.Add(_databaseSizeChart, 1, 1);
+        chartsContainer.Controls.Add(charts, 0, 1);
+        root.Controls.Add(chartsContainer, 0, 1);
 
         var lower = new TableLayoutPanel
         {
@@ -373,12 +442,117 @@ internal sealed class MainForm : Form
 
         lower.Controls.Add(BuildDashboardSection("نیازمند توجه", _attentionList), 0, 0);
         lower.Controls.Add(BuildDashboardSection("فعالیت‌های اخیر", _activityList), 1, 0);
-        root.Controls.Add(lower, 0, 1);
+        root.Controls.Add(lower, 0, 2);
 
         RenderEmptyList(_attentionList, "در حال دریافت وضعیت...");
         RenderEmptyList(_activityList, "در حال دریافت فعالیت‌ها...");
         return root;
     }
+
+    private void ConfigureCharts()
+    {
+        _backupSizeChart.ChartTitle = "روند حجم بکاپ‌های موفق";
+        _backupSizeChart.Kind = BackupChartKind.Line;
+        _backupSizeChart.ValueFormatter = value => FormatBytes((long)value);
+        _backupSizeChart.Margin = new Padding(6);
+
+        _backupStatusChart.ChartTitle = "موفق / ناموفق";
+        _backupStatusChart.Kind = BackupChartKind.Bar;
+        _backupStatusChart.ValueFormatter = value => value.ToString("0");
+        _backupStatusChart.Margin = new Padding(6);
+
+        _backupDurationChart.ChartTitle = "میانگین مدت بکاپ";
+        _backupDurationChart.Kind = BackupChartKind.Line;
+        _backupDurationChart.ValueFormatter = FormatDurationAxis;
+        _backupDurationChart.Margin = new Padding(6);
+
+        _databaseSizeChart.ChartTitle = "آخرین حجم بکاپ هر دیتابیس";
+        _databaseSizeChart.Kind = BackupChartKind.Bar;
+        _databaseSizeChart.ValueFormatter = value => FormatBytes((long)value);
+        _databaseSizeChart.Margin = new Padding(6);
+    }
+
+    private async Task RefreshDashboardChartsAsync()
+    {
+        try
+        {
+            var days = _chartRange.SelectedIndex == 0 ? 7 : 30;
+            var stats = await _api.GetDashboardStatsAsync(days);
+            if (stats is not null)
+                RenderDashboardCharts(stats);
+        }
+        catch (Exception ex)
+        {
+            _backupSizeChart.SetData([]);
+            _backupStatusChart.SetData([]);
+            _backupDurationChart.SetData([]);
+            _databaseSizeChart.SetData([]);
+            _agentStatus.Text = $"● نمودارها بروزرسانی نشدند: {ex.Message}";
+        }
+    }
+
+    private void RenderDashboardCharts(DashboardStatsResponse stats)
+    {
+        var dateLabels = stats.Daily
+            .Select(x => FormatChartDate(x.DateUtc))
+            .ToArray();
+
+        _backupSizeChart.SetData(
+            dateLabels,
+            new BackupChartSeries(
+                "حجم",
+                stats.Daily
+                    .Select(x => (double?)x.TotalSizeBytes)
+                    .ToArray()));
+
+        _backupStatusChart.SetData(
+            dateLabels,
+            new BackupChartSeries(
+                "موفق",
+                stats.Daily.Select(x => (double?)x.Succeeded).ToArray()),
+            new BackupChartSeries(
+                "ناموفق",
+                stats.Daily.Select(x => (double?)x.Failed).ToArray()));
+
+        _backupDurationChart.SetData(
+            dateLabels,
+            new BackupChartSeries(
+                "مدت",
+                stats.Daily.Select(x => x.AverageDurationSeconds).ToArray()));
+
+        var databaseSizes = stats.DatabaseSizes
+            .Where(x => x.SizeBytes.HasValue)
+            .Take(10)
+            .ToArray();
+
+        _databaseSizeChart.SetData(
+            databaseSizes.Select(x => ShortenLabel(x.DatabaseName, 15)).ToArray(),
+            new BackupChartSeries(
+                "حجم",
+                databaseSizes.Select(x => (double?)x.SizeBytes!.Value).ToArray()));
+    }
+
+    private static string FormatChartDate(DateTime utc)
+    {
+        var local = utc.Kind == DateTimeKind.Utc ? utc.ToLocalTime() : utc;
+        var calendar = new System.Globalization.PersianCalendar();
+        return $"{calendar.GetMonth(local):00}/{calendar.GetDayOfMonth(local):00}";
+    }
+
+    private static string FormatDurationAxis(double seconds)
+    {
+        if (seconds < 60)
+            return $"{seconds:0}s";
+        if (seconds < 3600)
+            return $"{seconds / 60:0.#}m";
+        return $"{seconds / 3600:0.#}h";
+    }
+
+    private static string ShortenLabel(string value, int maxLength) =>
+        value.Length <= maxLength
+            ? value
+            : value[..Math.Max(1, maxLength - 1)] + "…";
+
 
     private Control BuildKpiCard(string title, Label value, string subtitle)
     {
@@ -736,7 +910,9 @@ internal sealed class MainForm : Form
         {
             var dashboardTask = _api.GetDashboardAsync();
             var databasesTask = _api.GetDatabasesAsync();
-            await Task.WhenAll(dashboardTask, databasesTask);
+            var chartDays = _chartRange.SelectedIndex == 0 ? 7 : 30;
+            var statsTask = _api.GetDashboardStatsAsync(chartDays);
+            await Task.WhenAll(dashboardTask, databasesTask, statsTask);
 
             var dashboard = await dashboardTask;
             if (dashboard is not null)
@@ -749,6 +925,10 @@ internal sealed class MainForm : Form
 
                 RenderDashboard(dashboard);
             }
+
+            var stats = await statsTask;
+            if (stats is not null)
+                RenderDashboardCharts(stats);
 
             var databases = await databasesTask;
             _grid.Rows.Clear();
