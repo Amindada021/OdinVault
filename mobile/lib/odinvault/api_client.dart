@@ -13,6 +13,9 @@ String normalizeAgentBaseUrl(String value) {
   }
 
   normalized = normalized.replaceAll(RegExp(r'/+
+  OdinVaultApiClient(OdinVaultServer server)
+      : _dio = Dio(BaseOptions(
+          baseUrl: normalizeAgentBaseUrl(server.baseUrl),
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(minutes: 120),
           sendTimeout: const Duration(minutes: 120),
@@ -180,8 +183,10 @@ class OdinVaultApiException implements Exception {
       final uri = error.requestOptions.uri;
       if (error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout) {
+        final authority = uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
         return OdinVaultApiException(
-          'اتصال به Agent برقرار نشد.\nآدرس تست‌شده: ${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}\n'
+          'اتصال به Agent برقرار نشد.\n'
+          'آدرس تست‌شده: ${uri.scheme}://$authority\n'
           'اتصال اینترنت، IP/دامنه و پورت Agent را بررسی کنید.',
         );
       }
@@ -204,7 +209,7 @@ class OdinVaultApiException implements Exception {
 class OdinVaultApiClient {
   OdinVaultApiClient(OdinVaultServer server)
       : _dio = Dio(BaseOptions(
-          baseUrl: normalizeAgentBaseUrl(server.baseUrl),
+          baseUrl: server.baseUrl.replaceAll(RegExp(r'/$'), ''),
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(minutes: 120),
           sendTimeout: const Duration(minutes: 120),
