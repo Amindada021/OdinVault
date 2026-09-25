@@ -12,6 +12,7 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
     public DbSet<DatabaseStorageTarget> DatabaseStorageTargets => Set<DatabaseStorageTarget>();
     public DbSet<BackupReplica> BackupReplicas => Set<BackupReplica>();
     public DbSet<BackupJob> BackupJobs => Set<BackupJob>();
+    public DbSet<AlertReadState> AlertReadStates => Set<AlertReadState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +72,13 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.HasIndex(x => new { x.BackupRecordId, x.StorageTargetId }).IsUnique();
             entity.HasIndex(x => new { x.StorageTargetId, x.StartedAtUtc });
             entity.HasIndex(x => new { x.Status, x.NextRetryAtUtc });
+        });
+
+        modelBuilder.Entity<AlertReadState>(entity =>
+        {
+            entity.HasKey(x => x.AlertKey);
+            entity.Property(x => x.AlertKey).HasMaxLength(300).IsRequired();
+            entity.HasIndex(x => x.ReadAtUtc);
         });
 
         modelBuilder.Entity<BackupJob>(entity =>

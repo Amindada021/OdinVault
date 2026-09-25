@@ -473,6 +473,7 @@ app.MapDashboardEndpoints();
 app.MapDatabaseOverviewEndpoints();
 app.MapBackupOverviewEndpoints();
 app.MapRestoreEndpoints();
+app.MapAlertEndpoints();
 app.MapStorageEndpoints();
 app.MapReplicaTargetEndpoints();
 app.MapReplicaEndpoints(app.Services.GetRequiredService<ReplicaSettings>());
