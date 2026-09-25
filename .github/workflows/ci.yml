@@ -139,6 +139,19 @@ jobs:
               'android:name="${applicationName}"\n        android:usesCleartextTraffic="true"'
           )
           path.write_text(text)
+
+          gradle = Path("android/app/build.gradle.kts")
+          gradle_text = gradle.read_text()
+          gradle_text = gradle_text.replace(
+              "compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }",
+              "compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n        isCoreLibraryDesugaringEnabled = true\n    }"
+          )
+          if "coreLibraryDesugaring(" not in gradle_text:
+              gradle_text = gradle_text.replace(
+                  "}\n\nflutter {",
+                  "}\n\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.5\")\n}\n\nflutter {"
+              )
+          gradle.write_text(gradle_text)
           PY
 
       - name: Dependencies
