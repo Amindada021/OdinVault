@@ -543,11 +543,40 @@ static string? ValidateCron(string? cron)
 {
     if (string.IsNullOrWhiteSpace(cron))
         return null;
-    try { CronExpression.Parse(cron.Trim(), CronFormat.Standard); return null; }
-    catch (CronFormatException ex) { return $"Invalid cron expression: {ex.Message}"; }
+
+    var expressions = cron
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    if (expressions.Length == 0)
+        return "Invalid cron schedule.";
+
+    try
+    {
+        foreach (var expression in expressions)
+            CronExpression.Parse(expression, CronFormat.Standard);
+
+        return null;
+    }
+    catch (CronFormatException ex)
+    {
+        return $"Invalid cron expression: {ex.Message}";
+    }
 }
 
-static string? NormalizeCron(string? cron) => string.IsNullOrWhiteSpace(cron) ? null : cron.Trim();
+static string? NormalizeCron(string? cron)
+{
+    if (string.IsNullOrWhiteSpace(cron))
+        return null;
+
+    var expressions = cron
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+
+    return expressions.Length == 0
+        ? null
+        : string.Join(';', expressions);
+}
 
 public sealed record DiscoverSqlServerRequest(string Host, int? Port, string? Username, string? Password, bool TrustServerCertificate = true);
 public sealed record CreateDatabaseRequest(string Name, string Host, int? Port, string DatabaseName, string? Username, string? Password, bool TrustServerCertificate, string BackupDirectory, int MaxLocalBackups = 7, bool VerifyAfterBackup = true, string? ScheduleCron = null, bool IsEnabled = true);
