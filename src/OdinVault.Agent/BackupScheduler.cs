@@ -1,5 +1,5 @@
-using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Text;
 using Cronos;
 using Microsoft.EntityFrameworkCore;
 using OdinVault.Core;
@@ -104,7 +104,7 @@ public sealed class BackupScheduler(
         if (policy.LastScheduledRunUtc.HasValue && policy.LastScheduledRunUtc.Value >= occurrenceUtc)
             return;
 
-        var requestId = CreateScheduledRequestId(policy.Id, occurrenceUtc);
+        var requestId = CreateScheduledRequestId(policy.Id, occurrenceUtc, policy.ScheduleCron);
         var enqueue = await jobs.EnqueueAsync(requestId, policy.DatabaseEndpointId, cancellationToken);
 
         if (enqueue.Status == BackupJobEnqueueStatus.ActiveConflict)
@@ -166,12 +166,13 @@ public sealed class BackupScheduler(
             enqueue.Status);
     }
 
-    private static Guid CreateScheduledRequestId(Guid policyId, DateTime occurrenceUtc)
+    private static Guid CreateScheduledRequestId(
+        Guid policyId,
+        DateTime occurrenceUtc,
+        string scheduleCron)
     {
-        Span<byte> input = stackalloc byte[24];
-        policyId.TryWriteBytes(input[..16]);
-        BinaryPrimitives.WriteInt64LittleEndian(input[16..], occurrenceUtc.ToUniversalTime().Ticks);
-
+        var input = Encoding.UTF8.GetBytes(
+            $"{policyId:N}|{occurrenceUtc.ToUniversalTime().Ticks}|{scheduleCron.Trim()}");
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(input, hash);
         return new Guid(hash[..16]);
