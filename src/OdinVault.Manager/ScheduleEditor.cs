@@ -111,6 +111,8 @@ internal sealed class ScheduleEditor : UserControl
 
         Controls.Add(root);
         RefreshModeUi();
+    
+        UiLayout.Apply(this);
     }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
