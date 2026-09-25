@@ -37,6 +37,43 @@ internal sealed class AgentApiClient : IDisposable
                ?? [];
     }
 
+    public async Task<DatabaseResponse?> GetDatabaseAsync(Guid databaseId, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Get, $"api/databases/{databaseId}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<DatabaseResponse>(JsonOptions, cancellationToken);
+    }
+
+    public async Task UpdateDatabaseAsync(Guid databaseId, UpdateDatabaseRequest body, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Put, $"api/databases/{databaseId}");
+        request.Content = JsonContent.Create(body, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task UpdateBackupPolicyAsync(Guid databaseId, UpdateBackupPolicyRequest body, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Put, $"api/databases/{databaseId}/policy");
+        request.Content = JsonContent.Create(body, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task DeleteDatabaseAsync(
+        Guid databaseId,
+        bool deleteHistory,
+        bool deleteFiles,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Delete,
+            $"api/databases/{databaseId}?deleteHistory={deleteHistory.ToString().ToLowerInvariant()}&deleteFiles={deleteFiles.ToString().ToLowerInvariant()}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<DiscoveredDatabaseResponse>> DiscoverDatabasesAsync(
         DiscoverSqlServerRequest body,
         CancellationToken cancellationToken = default)
@@ -173,6 +210,24 @@ internal sealed record CreateDatabaseRequest(
     string? Username,
     string? Password,
     bool TrustServerCertificate,
+    string BackupDirectory,
+    int MaxLocalBackups,
+    bool VerifyAfterBackup,
+    string? ScheduleCron,
+    bool IsEnabled);
+
+internal sealed record UpdateDatabaseRequest(
+    string Name,
+    string Host,
+    int? Port,
+    string DatabaseName,
+    string? Username,
+    string? Password,
+    bool ClearPassword,
+    bool TrustServerCertificate,
+    bool IsEnabled);
+
+internal sealed record UpdateBackupPolicyRequest(
     string BackupDirectory,
     int MaxLocalBackups,
     bool VerifyAfterBackup,
