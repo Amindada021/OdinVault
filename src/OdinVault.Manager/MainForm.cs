@@ -7,6 +7,10 @@ internal sealed class MainForm : Form
     private readonly ManagerSettingsStore _settingsStore = new();
     private ManagerSettings _settings;
     private readonly NotifyIcon _trayIcon = new();
+    private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 60_000 };
+    private readonly HashSet<string> _knownUnreadAlertKeys = new(StringComparer.Ordinal);
+    private bool _alertSnapshotInitialized;
+    private bool _refreshAllInProgress;
     private bool _allowExit;
     private readonly Label _agentStatus = new();
     private readonly Label _lastRefresh = new();
@@ -96,6 +100,9 @@ internal sealed class MainForm : Form
         ConfigureTray();
         ApplyTheme();
 
+        _statusTimer.Tick += async (_, _) => await RefreshAllAsync(showErrors: false);
+        _statusTimer.Start();
+
         Shown += async (_, _) =>
         {
             await RefreshAllAsync();
@@ -126,6 +133,8 @@ internal sealed class MainForm : Form
 
         FormClosed += (_, _) =>
         {
+            _statusTimer.Stop();
+            _statusTimer.Dispose();
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
             _api.Dispose();
@@ -2346,6 +2355,47 @@ internal sealed class MainForm : Form
             MessageBoxIcon.Information);
     }
 
+    private void NotifyNewAlerts(AlertsOverviewResponse? alerts)
+    {
+        if (alerts is null)
+            return;
+
+        var currentKeys = alerts.Alerts
+            .Where(x => !x.IsRead)
+            .Select(x => x.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (!_alertSnapshotInitialized)
+        {
+            _knownUnreadAlertKeys.Clear();
+            _knownUnreadAlertKeys.UnionWith(currentKeys);
+            _alertSnapshotInitialized = true;
+            return;
+        }
+
+        var newAlerts = alerts.Alerts
+            .Where(x => !x.IsRead && !_knownUnreadAlertKeys.Contains(x.Key))
+            .OrderBy(x => x.Severity == "critical" ? 0 : 1)
+            .ThenByDescending(x => x.OccurredAtUtc)
+            .ToList();
+
+        _knownUnreadAlertKeys.Clear();
+        _knownUnreadAlertKeys.UnionWith(currentKeys);
+
+        if (newAlerts.Count == 0 || !_settings.ShowTrayNotifications)
+            return;
+
+        var first = newAlerts[0];
+        var message = newAlerts.Count == 1
+            ? $"{first.DatabaseName}: {first.Title}"
+            : $"{newAlerts.Count} هشدار جدید؛ {first.DatabaseName}: {first.Title}";
+
+        ShowTrayNotification(
+            "هشدار جدید OdinVault",
+            message,
+            first.Severity == "critical" ? ToolTipIcon.Error : ToolTipIcon.Warning);
+    }
+
     private void ConfigureTray()
     {
         var menu = new ContextMenuStrip();
@@ -2733,8 +2783,12 @@ internal sealed class MainForm : Form
         button.Click += handler;
     }
 
-    private async Task RefreshAllAsync()
+    private async Task RefreshAllAsync(bool showErrors = true)
     {
+        if (_refreshAllInProgress)
+            return;
+
+        _refreshAllInProgress = true;
         SetBusy(true);
         try
         {
@@ -2791,6 +2845,7 @@ internal sealed class MainForm : Form
 
             var alertSummary = await alertsTask;
             UpdateAlertNavigationBadge(alertSummary?.UnreadCount ?? 0);
+            NotifyNewAlerts(alertSummary);
 
             var databases = await databasesTask;
             var overviews = (await overviewsTask).ToDictionary(x => x.Id);
@@ -2831,11 +2886,14 @@ internal sealed class MainForm : Form
             _sidebarAgentStatus.Text = "● Agent Offline\r\nlocalhost:5188";
             _sidebarAgentStatus.ForeColor = Color.FromArgb(245, 135, 135);
             _trayIcon.Text = "OdinVault • Agent Offline";
-            ShowError(ex);
+
+            if (showErrors)
+                ShowError(ex);
         }
         finally
         {
             SetBusy(false);
+            _refreshAllInProgress = false;
         }
     }
 
