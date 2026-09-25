@@ -468,6 +468,7 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
 
 app.MapBackupJobs();
 app.MapDashboardEndpoints();
+app.MapDatabaseOverviewEndpoints();
 app.MapStorageEndpoints();
 app.MapReplicaTargetEndpoints();
 app.MapReplicaEndpoints(app.Services.GetRequiredService<ReplicaSettings>());
