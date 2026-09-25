@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 
 namespace OdinVault.Manager;
@@ -65,6 +66,7 @@ internal sealed class ScheduleEditor : UserControl
         RefreshModeUi();
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string? ScheduleCron
     {
         get => BuildCron();
