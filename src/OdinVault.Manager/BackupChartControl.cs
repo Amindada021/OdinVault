@@ -51,6 +51,18 @@ internal sealed class BackupChartControl : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<double, string>? ValueFormatter { get; set; }
 
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color GridLineColor { get; set; } = Color.FromArgb(235, 239, 244);
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color SecondaryTextColor { get; set; } = Color.FromArgb(105, 115, 130);
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color BorderColor { get; set; } = Color.FromArgb(226, 231, 238);
+
     public void SetData(
         IReadOnlyList<string> categories,
         params BackupChartSeries[] series)
@@ -71,11 +83,11 @@ internal sealed class BackupChartControl : Control
         if (bounds.Width < 140 || bounds.Height < 120)
             return;
 
-        using var borderPen = new Pen(Color.FromArgb(226, 231, 238));
+        using var borderPen = new Pen(BorderColor);
         e.Graphics.DrawRectangle(borderPen, 0, 0, bounds.Width - 1, bounds.Height - 1);
 
         using var titleFont = new Font(Font.FontFamily, 10.5F, FontStyle.Bold);
-        using var secondaryBrush = new SolidBrush(Color.FromArgb(105, 115, 130));
+        using var secondaryBrush = new SolidBrush(SecondaryTextColor);
         using var primaryBrush = new SolidBrush(ForeColor);
 
         e.Graphics.DrawString(
@@ -135,7 +147,7 @@ internal sealed class BackupChartControl : Control
 
         var x = 14f;
         var y = 16f;
-        using var brush = new SolidBrush(Color.FromArgb(90, 100, 115));
+        using var brush = new SolidBrush(SecondaryTextColor);
 
         foreach (var item in _series.Reverse())
         {
@@ -152,8 +164,8 @@ internal sealed class BackupChartControl : Control
 
     private void DrawAxes(Graphics graphics, Rectangle plot, double maxValue)
     {
-        using var gridPen = new Pen(Color.FromArgb(235, 239, 244));
-        using var textBrush = new SolidBrush(Color.FromArgb(125, 135, 148));
+        using var gridPen = new Pen(GridLineColor);
+        using var textBrush = new SolidBrush(SecondaryTextColor);
 
         const int gridLines = 4;
         for (var i = 0; i <= gridLines; i++)
@@ -241,7 +253,7 @@ internal sealed class BackupChartControl : Control
 
     private void DrawCategoryLabels(Graphics graphics, Rectangle plot)
     {
-        using var brush = new SolidBrush(Color.FromArgb(125, 135, 148));
+        using var brush = new SolidBrush(SecondaryTextColor);
         var count = _categories.Count;
         if (count == 0)
             return;
