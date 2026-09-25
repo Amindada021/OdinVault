@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Data.SqlClient;
 using OdinVault.Core;
 
@@ -22,8 +23,14 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         if (string.IsNullOrWhiteSpace(request.BackupDirectory))
             throw new InvalidOperationException("Backup directory is not configured.");
 
+        if (!IsLocalSqlServer(request.Connection.Host) && !IsUncPath(request.BackupDirectory))
+        {
+            throw new InvalidOperationException(
+                "Remote SQL Server backups must use a UNC/shared backup directory that is accessible to both the SQL Server service and the OdinVault Agent.");
+        }
+
         if (!Directory.Exists(request.BackupDirectory))
-            throw new InvalidOperationException("Backup directory does not exist or is not accessible by the OdinVault Agent.");
+            throw new InvalidOperationException("Backup directory does not exist or is not accessible by the OdinVault Agent. Remote SQL Server backups require a shared UNC path visible to both services.");
 
         var probePath = Path.Combine(request.BackupDirectory, $".odinvault-write-test-{Guid.NewGuid():N}.tmp");
         try
@@ -66,7 +73,7 @@ SELECT
     CONVERT(nvarchar(128), SERVERPROPERTY('ProductVersion')) AS ProductVersion,
     CONVERT(nvarchar(256), SERVERPROPERTY('Edition')) AS Edition,
     d.state_desc,
-    HAS_PERMS_BY_NAME(QUOTENAME(d.name), 'DATABASE', 'BACKUP DATABASE') AS CanBackup,
+    HAS_PERMS_BY_NAME(d.name, 'DATABASE', 'BACKUP DATABASE') AS CanBackup,
     (
         SELECT SUM(CONVERT(bigint, mf.size)) * 8192
         FROM sys.master_files mf
@@ -121,7 +128,7 @@ WHERE d.name = @databaseName;
             warnings.Add("Destination free space is smaller than the database's allocated size; compression may still allow the backup to succeed.");
         }
 
-        warnings.Add("SQL Server service-account write permission to the destination is finally proven only by the backup command itself.");
+        warnings.Add("Agent access to the backup path was verified. SQL Server service-account write access is finally proven by the BACKUP DATABASE command itself.");
 
         return new BackupPreflightResult(
             productVersion,
@@ -215,6 +222,34 @@ WHERE d.name = @databaseName;
         command.Parameters.AddWithValue("@backupPath", backupPath);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? 0 : Convert.ToInt64(value);
+    }
+
+    private static bool IsUncPath(string path) =>
+        OperatingSystem.IsWindows() &&
+        path.TrimStart().StartsWith(@"\\", StringComparison.Ordinal);
+
+    private static bool IsLocalSqlServer(string host)
+    {
+        var normalized = (host ?? string.Empty).Trim();
+        var comma = normalized.LastIndexOf(',');
+        if (comma > 0)
+            normalized = normalized[..comma];
+
+        var slash = normalized.IndexOf('\');
+        if (slash > 0)
+            normalized = normalized[..slash];
+
+        normalized = normalized.Trim().TrimEnd('.');
+        if (normalized is "." or "(local)" ||
+            string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var machine = Environment.MachineName.Trim().TrimEnd('.');
+        var dnsHost = Dns.GetHostName().Trim().TrimEnd('.');
+        return string.Equals(normalized, machine, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalized, dnsHost, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildConnectionString(DatabaseConnectionInfo connection, string initialCatalog)
