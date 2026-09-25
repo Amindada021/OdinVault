@@ -99,6 +99,10 @@ public sealed class StorageReplicationService(
             replica.NextRetryAtUtc = null;
             await db.SaveChangesAsync(cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             replica.Status = ReplicaStatus.Failed;
