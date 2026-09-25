@@ -109,6 +109,8 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<DatabaseResponse>(JsonOptions, cancellationToken);
     }
 
+    public string GetApiKey() => LoadApiKey();
+
     private HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string uri)
     {
         var apiKey = LoadApiKey();
