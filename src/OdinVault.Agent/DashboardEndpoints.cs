@@ -33,6 +33,13 @@ public static class DashboardEndpoints
                 .Take(200)
                 .ToListAsync(ct);
 
+            var successfulReplicaBackupIds = await db.BackupReplicas
+                .AsNoTracking()
+                .Where(x => x.Status == ReplicaStatus.Succeeded)
+                .Select(x => x.BackupRecordId)
+                .Distinct()
+                .ToListAsync(ct);
+
             var recentReplicaFailures = await (
                 from replica in db.BackupReplicas.AsNoTracking()
                 join backup in db.BackupRecords.AsNoTracking()
@@ -55,7 +62,7 @@ public static class DashboardEndpoints
                 .Take(20)
                 .ToListAsync(ct);
 
-            var attention = new List<object>();
+            var attention = new List<DashboardAttentionItem>();
 
             foreach (var database in databases)
             {
@@ -66,70 +73,59 @@ public static class DashboardEndpoints
 
                 var usableSuccessfulBackup = backups.FirstOrDefault(x =>
                     x.Status == BackupStatus.Succeeded &&
-                    (x.LocalFileAvailable ||
-                     db.BackupReplicas.AsNoTracking().Any(replica =>
-                         replica.BackupRecordId == x.Id &&
-                         replica.Status == ReplicaStatus.Succeeded)));
+                    (x.LocalFileAvailable || successfulReplicaBackupIds.Contains(x.Id)));
 
                 if (usableSuccessfulBackup is null)
                 {
-                    attention.Add(new
-                    {
-                        severity = "critical",
-                        databaseId = database.Id,
-                        databaseName = database.Name,
-                        title = "بدون بکاپ قابل استفاده",
-                        message = "برای این دیتابیس هنوز نسخه بکاپ موفق و قابل استفاده ثبت نشده است.",
-                        occurredAtUtc = (DateTime?)null
-                    });
+                    attention.Add(new DashboardAttentionItem(
+                        "critical",
+                        database.Id,
+                        database.Name,
+                        "بدون بکاپ قابل استفاده",
+                        "برای این دیتابیس هنوز نسخه بکاپ موفق و قابل استفاده ثبت نشده است.",
+                        null));
                     continue;
                 }
 
                 var latest = backups.FirstOrDefault();
                 if (latest?.Status == BackupStatus.Failed)
                 {
-                    attention.Add(new
-                    {
-                        severity = "critical",
-                        databaseId = database.Id,
-                        databaseName = database.Name,
-                        title = "آخرین بکاپ ناموفق",
-                        message = string.IsNullOrWhiteSpace(latest.Error)
+                    attention.Add(new DashboardAttentionItem(
+                        "critical",
+                        database.Id,
+                        database.Name,
+                        "آخرین بکاپ ناموفق",
+                        string.IsNullOrWhiteSpace(latest.Error)
                             ? "آخرین تلاش برای بکاپ ناموفق بوده است."
                             : latest.Error,
-                        occurredAtUtc = latest.CompletedAtUtc ?? latest.StartedAtUtc
-                    });
+                        latest.CompletedAtUtc ?? latest.StartedAtUtc));
                 }
                 else if (latest?.Status == BackupStatus.Succeeded &&
                          latest.VerificationStatus == VerificationStatus.Failed)
                 {
-                    attention.Add(new
-                    {
-                        severity = "warning",
-                        databaseId = database.Id,
-                        databaseName = database.Name,
-                        title = "بررسی سلامت ناموفق",
-                        message = string.IsNullOrWhiteSpace(latest.Error)
+                    attention.Add(new DashboardAttentionItem(
+                        "warning",
+                        database.Id,
+                        database.Name,
+                        "بررسی سلامت ناموفق",
+                        string.IsNullOrWhiteSpace(latest.Error)
                             ? "فایل بکاپ ساخته شده ولی Verify ناموفق بوده است."
                             : latest.Error,
-                        occurredAtUtc = latest.CompletedAtUtc ?? latest.StartedAtUtc
-                    });
+                        latest.CompletedAtUtc ?? latest.StartedAtUtc));
                 }
             }
 
             foreach (var replica in recentReplicaFailures)
             {
-                attention.Add(new
-                {
-                    severity = "warning",
-                    databaseId = replica.Id,
-                    databaseName = replica.DatabaseName,
-                    title = $"Replica ناموفق: {replica.TargetName}",
-                    message = string.IsNullOrWhiteSpace(replica.Error)
+                attention.Add(new DashboardAttentionItem(
+                    "warning",
+                    replica.Id,
+                    replica.DatabaseName,
+                    $"Replica ناموفق: {replica.TargetName}",
+                    string.IsNullOrWhiteSpace(replica.Error)
                         ? "ارسال نسخه ثانویه کامل نشده است."
                         : replica.Error,
-                    occurredAtUtc = replica.CompletedAtUtc
-                });
+                    replica.CompletedAtUtc));
             }
 
             var recentActivity = recentBackups
@@ -163,7 +159,8 @@ public static class DashboardEndpoints
                 failedJobsLast24Hours = health.FailedJobsLast24Hours,
                 storageFreeBytes = health.StorageFreeBytes,
                 attention = attention
-                    .OrderBy(x => ((dynamic)x).severity == "critical" ? 0 : 1)
+                    .OrderBy(x => x.Severity == "critical" ? 0 : 1)
+                    .ThenByDescending(x => x.OccurredAtUtc)
                     .Take(10)
                     .ToArray(),
                 recentActivity
@@ -171,3 +168,12 @@ public static class DashboardEndpoints
         });
     }
 }
+
+
+internal sealed record DashboardAttentionItem(
+    string Severity,
+    Guid DatabaseId,
+    string DatabaseName,
+    string Title,
+    string Message,
+    DateTime? OccurredAtUtc);
