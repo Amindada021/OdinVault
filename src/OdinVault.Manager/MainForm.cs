@@ -35,6 +35,7 @@ internal sealed class MainForm : Form
     private Control? _databasesPage;
     private Control? _backupsPage;
     private Control? _storagePage;
+    private Control? _restorePage;
     private Guid? _currentDetailsDatabaseId;
     private readonly Label _localStoragePath = new();
     private readonly Label _localStorageFree = new();
@@ -306,9 +307,8 @@ internal sealed class MainForm : Form
                     break;
                 case "restore":
                     _pageTitle.Text = "بازیابی";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "Restore",
-                        "Wizard بازیابی در مرحله Restore اضافه می‌شود."));
+                    _restorePage ??= BuildRestorePage();
+                    _contentHost.Controls.Add(_restorePage);
                     break;
                 case "alerts":
                     _pageTitle.Text = "هشدارها";
@@ -1359,6 +1359,71 @@ internal sealed class MainForm : Form
         5 => "OdinVault Replica",
         _ => "نامشخص"
     };
+
+    private Control BuildRestorePage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(20),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+
+        root.Controls.Add(new Label
+        {
+            Text = "Restore امن به دیتابیس جدید",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 18F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(42, 52, 68)
+        }, 0, 0);
+
+        root.Controls.Add(new Label
+        {
+            Text =
+                "در این نسخه Restore فقط از بکاپ موفقی که فایل Local آن روی Agent موجود است انجام می‌شود.\r\n\r\n" +
+                "• دیتابیس مقصد باید نام جدید داشته باشد.\r\n" +
+                "• هیچ دیتابیس موجودی overwrite نمی‌شود.\r\n" +
+                "• قبل از اجرا RESTORE VERIFYONLY و FILELISTONLY انجام می‌شود.\r\n" +
+                "• مسیر MDF/LDF از مسیرهای پیش‌فرض خود SQL Server ساخته می‌شود.\r\n" +
+                "• اگر Backup یا Restore دیگری روی همان endpoint در حال اجرا باشد، عملیات شروع نمی‌شود.",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(18),
+            TextAlign = ContentAlignment.TopRight,
+            ForeColor = Color.FromArgb(75, 85, 100),
+            Font = new Font(Font.FontFamily, 11F)
+        }, 0, 1);
+
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            Padding = new Padding(8)
+        };
+
+        var start = new Button
+        {
+            Text = "شروع Restore Wizard",
+            AutoSize = true,
+            Height = 40,
+            Padding = new Padding(14, 2, 14, 2)
+        };
+        start.Click += (_, _) =>
+        {
+            using var wizard = new RestoreWizardForm(_api);
+            wizard.ShowDialog(this);
+        };
+        actions.Controls.Add(start);
+        root.Controls.Add(actions, 0, 2);
+
+        return root;
+    }
 
     private Control BuildPlaceholderPage(string title, string description)
     {
