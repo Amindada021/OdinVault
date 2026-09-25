@@ -40,10 +40,11 @@ public sealed class BackupOrchestrator(
         db.BackupRecords.Add(record);
         await db.SaveChangesAsync(cancellationToken);
 
+        BackupExecutionResult result;
         try
         {
             var connection = ToConnectionInfo(endpoint);
-            var result = await provider.CreateBackupAsync(
+            result = await provider.CreateBackupAsync(
                 new BackupExecutionRequest(endpoint.Id, connection, policy.BackupDirectory, policy.VerifyAfterBackup, progress),
                 cancellationToken);
 
@@ -54,14 +55,8 @@ public sealed class BackupOrchestrator(
             record.VerificationStatus = result.VerificationStatus;
             record.Status = BackupStatus.Succeeded;
             record.CompletedAtUtc = DateTime.UtcNow;
+            record.Error = null;
             await db.SaveChangesAsync(cancellationToken);
-
-            // The local file is ready: clients may download while replication continues.
-            progress?.Report(new BackupProgress("replicating", null, record));
-            try { await replicationService.ReplicateAsync(record, cancellationToken); }
-            catch (Exception ex) { logger.LogError(ex, "Replication failed after local backup {BackupId} succeeded.", record.Id); }
-            await CleanupRetentionAsync(endpoint.Id, policy.MaxLocalBackups, cancellationToken);
-            return record;
         }
         catch (Exception ex)
         {
@@ -75,6 +70,45 @@ public sealed class BackupOrchestrator(
             await db.SaveChangesAsync(CancellationToken.None);
             throw;
         }
+
+        if (result.VerificationStatus == VerificationStatus.Failed)
+        {
+            logger.LogWarning(
+                "Backup {BackupId} completed but verification failed. {VerificationError}",
+                record.Id,
+                result.VerificationError);
+        }
+
+        // The local file is ready: clients may download while downstream work continues.
+        progress?.Report(new BackupProgress("replicating", null, record));
+        try
+        {
+            await replicationService.ReplicateAsync(record, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Replication processing failed after local backup {BackupId} succeeded.", record.Id);
+        }
+
+        progress?.Report(new BackupProgress("retention", null, record));
+        try
+        {
+            await CleanupRetentionAsync(endpoint.Id, policy.MaxLocalBackups, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Retention cleanup failed after local backup {BackupId} succeeded.", record.Id);
+        }
+
+        return record;
     }
 
     public async Task TestConnectionAsync(Guid databaseId, CancellationToken cancellationToken = default)

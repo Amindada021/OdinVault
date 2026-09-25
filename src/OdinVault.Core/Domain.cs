@@ -140,7 +140,8 @@ public sealed record BackupExecutionResult(
     string FileName,
     string FilePath,
     long SizeBytes,
-    VerificationStatus VerificationStatus);
+    VerificationStatus VerificationStatus,
+    string? VerificationError = null);
 
 public sealed record StorageUploadRequest(
     Guid BackupRecordId,

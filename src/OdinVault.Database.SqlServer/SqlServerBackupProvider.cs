@@ -46,24 +46,37 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         }
 
         var verificationStatus = VerificationStatus.NotRequested;
+        string? verificationError = null;
         if (request.VerifyAfterBackup)
         {
             verificationStatus = VerificationStatus.Pending;
             request.Progress?.Report(new BackupProgress("verify"));
-            await using var verifyCommand = new SqlCommand(
-                "RESTORE VERIFYONLY FROM DISK = @path WITH CHECKSUM;",
-                connection)
+            try
             {
-                CommandTimeout = 0
-            };
-            verifyCommand.Parameters.AddWithValue("@path", backupPath);
-            await verifyCommand.ExecuteNonQueryAsync(cancellationToken);
-            verificationStatus = VerificationStatus.Verified;
+                await using var verifyCommand = new SqlCommand(
+                    "RESTORE VERIFYONLY FROM DISK = @path WITH CHECKSUM;",
+                    connection)
+                {
+                    CommandTimeout = 0
+                };
+                verifyCommand.Parameters.AddWithValue("@path", backupPath);
+                await verifyCommand.ExecuteNonQueryAsync(cancellationToken);
+                verificationStatus = VerificationStatus.Verified;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                verificationStatus = VerificationStatus.Failed;
+                verificationError = ex.Message;
+            }
         }
 
         var sizeBytes = File.Exists(backupPath) ? new FileInfo(backupPath).Length : await ReadBackupSizeAsync(connection, databaseName, backupPath, cancellationToken);
 
-        return new BackupExecutionResult(fileName, backupPath, sizeBytes, verificationStatus);
+        return new BackupExecutionResult(fileName, backupPath, sizeBytes, verificationStatus, verificationError);
     }
 
     private static async Task<long> ReadBackupSizeAsync(
