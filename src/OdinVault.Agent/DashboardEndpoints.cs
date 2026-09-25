@@ -1,0 +1,173 @@
+using Microsoft.EntityFrameworkCore;
+using OdinVault.Core;
+using OdinVault.Persistence;
+
+namespace OdinVault.Agent;
+
+public static class DashboardEndpoints
+{
+    public static void MapDashboardEndpoints(this WebApplication app)
+    {
+        app.MapGet("/api/dashboard", async (
+            OdinVaultDbContext db,
+            AgentHealthService healthService,
+            CancellationToken ct) =>
+        {
+            var health = await healthService.CheckAsync(ct);
+            var now = DateTime.UtcNow;
+            var failedCutoff = now.AddHours(-24);
+
+            var databases = await db.DatabaseEndpoints
+                .AsNoTracking()
+                .Where(x => x.IsEnabled)
+                .OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name })
+                .ToListAsync(ct);
+
+            var databaseIds = databases.Select(x => x.Id).ToList();
+
+            var recentBackups = await db.BackupRecords
+                .AsNoTracking()
+                .Where(x => databaseIds.Contains(x.DatabaseEndpointId))
+                .OrderByDescending(x => x.StartedAtUtc)
+                .Take(200)
+                .ToListAsync(ct);
+
+            var recentReplicaFailures = await (
+                from replica in db.BackupReplicas.AsNoTracking()
+                join backup in db.BackupRecords.AsNoTracking()
+                    on replica.BackupRecordId equals backup.Id
+                join database in db.DatabaseEndpoints.AsNoTracking()
+                    on backup.DatabaseEndpointId equals database.Id
+                join target in db.StorageTargets.AsNoTracking()
+                    on replica.StorageTargetId equals target.Id
+                where database.IsEnabled &&
+                      replica.Status == ReplicaStatus.Failed
+                orderby replica.CompletedAtUtc descending
+                select new
+                {
+                    database.Id,
+                    DatabaseName = database.Name,
+                    TargetName = target.Name,
+                    replica.Error,
+                    replica.CompletedAtUtc
+                })
+                .Take(20)
+                .ToListAsync(ct);
+
+            var attention = new List<object>();
+
+            foreach (var database in databases)
+            {
+                var backups = recentBackups
+                    .Where(x => x.DatabaseEndpointId == database.Id)
+                    .OrderByDescending(x => x.StartedAtUtc)
+                    .ToList();
+
+                var usableSuccessfulBackup = backups.FirstOrDefault(x =>
+                    x.Status == BackupStatus.Succeeded &&
+                    (x.LocalFileAvailable ||
+                     db.BackupReplicas.AsNoTracking().Any(replica =>
+                         replica.BackupRecordId == x.Id &&
+                         replica.Status == ReplicaStatus.Succeeded)));
+
+                if (usableSuccessfulBackup is null)
+                {
+                    attention.Add(new
+                    {
+                        severity = "critical",
+                        databaseId = database.Id,
+                        databaseName = database.Name,
+                        title = "بدون بکاپ قابل استفاده",
+                        message = "برای این دیتابیس هنوز نسخه بکاپ موفق و قابل استفاده ثبت نشده است.",
+                        occurredAtUtc = (DateTime?)null
+                    });
+                    continue;
+                }
+
+                var latest = backups.FirstOrDefault();
+                if (latest?.Status == BackupStatus.Failed)
+                {
+                    attention.Add(new
+                    {
+                        severity = "critical",
+                        databaseId = database.Id,
+                        databaseName = database.Name,
+                        title = "آخرین بکاپ ناموفق",
+                        message = string.IsNullOrWhiteSpace(latest.Error)
+                            ? "آخرین تلاش برای بکاپ ناموفق بوده است."
+                            : latest.Error,
+                        occurredAtUtc = latest.CompletedAtUtc ?? latest.StartedAtUtc
+                    });
+                }
+                else if (latest?.Status == BackupStatus.Succeeded &&
+                         latest.VerificationStatus == VerificationStatus.Failed)
+                {
+                    attention.Add(new
+                    {
+                        severity = "warning",
+                        databaseId = database.Id,
+                        databaseName = database.Name,
+                        title = "بررسی سلامت ناموفق",
+                        message = string.IsNullOrWhiteSpace(latest.Error)
+                            ? "فایل بکاپ ساخته شده ولی Verify ناموفق بوده است."
+                            : latest.Error,
+                        occurredAtUtc = latest.CompletedAtUtc ?? latest.StartedAtUtc
+                    });
+                }
+            }
+
+            foreach (var replica in recentReplicaFailures)
+            {
+                attention.Add(new
+                {
+                    severity = "warning",
+                    databaseId = replica.Id,
+                    databaseName = replica.DatabaseName,
+                    title = $"Replica ناموفق: {replica.TargetName}",
+                    message = string.IsNullOrWhiteSpace(replica.Error)
+                        ? "ارسال نسخه ثانویه کامل نشده است."
+                        : replica.Error,
+                    occurredAtUtc = replica.CompletedAtUtc
+                });
+            }
+
+            var recentActivity = recentBackups
+                .Take(12)
+                .Select(backup =>
+                {
+                    var database = databases.FirstOrDefault(x => x.Id == backup.DatabaseEndpointId);
+                    return new
+                    {
+                        databaseId = backup.DatabaseEndpointId,
+                        databaseName = database?.Name ?? "Database",
+                        backupId = backup.Id,
+                        status = (int)backup.Status,
+                        verificationStatus = (int)backup.VerificationStatus,
+                        backup.SizeBytes,
+                        backup.StartedAtUtc,
+                        backup.CompletedAtUtc,
+                        backup.Error
+                    };
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                utc = now,
+                status = health.Status,
+                protectionStatus = health.ProtectionStatus,
+                enabledDatabases = health.EnabledDatabases,
+                protectedDatabases = Math.Max(0, health.EnabledDatabases - health.DatabasesWithoutSuccessfulBackup),
+                activeJobs = health.QueuedJobs + health.RunningJobs,
+                failedJobsLast24Hours = health.FailedJobsLast24Hours,
+                storageFreeBytes = health.StorageFreeBytes,
+                attention = attention
+                    .OrderBy(x => ((dynamic)x).severity == "critical" ? 0 : 1)
+                    .Take(10)
+                    .ToArray(),
+                recentActivity
+            });
+        });
+    }
+}
