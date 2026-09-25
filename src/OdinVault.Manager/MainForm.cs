@@ -1044,14 +1044,21 @@ internal sealed class MainForm : Form
         grid.RowHeadersVisible = false;
         grid.BackgroundColor = Color.White;
         grid.BorderStyle = BorderStyle.None;
+        grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
         grid.EnableHeadersVisualStyles = false;
-        grid.ColumnHeadersHeight = 46;
-        grid.RowTemplate.Height = 40;
-        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
-        grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 80);
-        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 235, 246);
-        grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(30, 40, 55);
-        grid.GridColor = Color.FromArgb(228, 233, 240);
+        grid.ColumnHeadersHeight = 48;
+        grid.RowTemplate.Height = 44;
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(248, 250, 252);
+        grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(51, 65, 85);
+        grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+        grid.DefaultCellStyle.BackColor = Color.White;
+        grid.DefaultCellStyle.ForeColor = Color.FromArgb(51, 65, 85);
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(239, 246, 255);
+        grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(29, 78, 216);
+        grid.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+        grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 252, 255);
+        grid.GridColor = Color.FromArgb(226, 232, 240);
     }
 
     private async Task RefreshBackupsPageAsync()
@@ -2114,6 +2121,193 @@ internal sealed class MainForm : Form
         _ => "سالم"
     };
 
+    private Control BuildAboutPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = new Padding(4),
+            BackColor = Color.FromArgb(246, 248, 252)
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
+
+        var identity = new ReaLTaiizor.Controls.Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            EdgeColor = Color.FromArgb(226, 232, 240)
+        };
+
+        var identityContent = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 6,
+            Padding = new Padding(24),
+            BackColor = Color.White
+        };
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        identityContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+
+        identityContent.Controls.Add(new Label
+        {
+            Text = "OdinVault",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.BottomRight,
+            Font = new Font(Font.FontFamily, 28F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(15, 23, 42)
+        }, 0, 0);
+        identityContent.Controls.Add(new Label
+        {
+            Text = "Backup Control Center",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight,
+            Font = new Font(Font.FontFamily, 11F),
+            ForeColor = Color.FromArgb(100, 116, 139)
+        }, 0, 1);
+        identityContent.Controls.Add(new Label
+        {
+            Text = $"نسخه Manager: {_updates.GetCurrentVersion()}",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 11F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(37, 99, 235)
+        }, 0, 2);
+        identityContent.Controls.Add(new Label
+        {
+            Text = "مدیریت بکاپ، بازیابی، Replica، مانیتورینگ و اتصال موبایل برای SQL Server",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(71, 85, 105)
+        }, 0, 3);
+        identityContent.Controls.Add(new Label
+        {
+            Text = "OdinVault برای اجرای متمرکز Backup Jobها، بررسی سلامت فایل‌های بکاپ، نگهداری محلی و مقصدهای Replica، گزارش‌گیری و Restore طراحی شده است. Agent مستقل از Manager اجرا می‌شود و Manager مرکز کنترل و مانیتورینگ آن است.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopRight,
+            AutoEllipsis = true,
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Padding = new Padding(0, 12, 0, 0)
+        }, 0, 4);
+
+        var identityActions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false
+        };
+        var update = CreateToolbarButton("بررسی بروزرسانی", primary: true);
+        update.Click += async (_, _) => await CheckForUpdatesAsync(silent: false);
+        var mobile = CreateToolbarButton("اتصال موبایل");
+        mobile.Click += (_, _) => ShowMobileConnection();
+        identityActions.Controls.Add(update);
+        identityActions.Controls.Add(mobile);
+        identityContent.Controls.Add(identityActions, 0, 5);
+        identity.Controls.Add(identityContent);
+        root.Controls.Add(identity, 0, 0);
+        root.SetRowSpan(identity, 2);
+
+        var features = new ReaLTaiizor.Controls.Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            EdgeColor = Color.FromArgb(226, 232, 240)
+        };
+
+        var featureLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 5,
+            Padding = new Padding(20),
+            BackColor = Color.White
+        };
+        featureLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        featureLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        featureLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        for (var i = 1; i < 5; i++)
+            featureLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
+
+        var featureTitle = new Label
+        {
+            Text = "امکانات اصلی",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 12F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(30, 41, 59)
+        };
+        featureLayout.Controls.Add(featureTitle, 0, 0);
+        featureLayout.SetColumnSpan(featureTitle, 2);
+
+        string[] featureItems =
+        [
+            "✓ بکاپ زمان‌بندی‌شده SQL Server",
+            "✓ Verify و کنترل سلامت فایل بکاپ",
+            "✓ Restore امن به دیتابیس جدید",
+            "✓ Replica و مقصدهای ذخیره‌سازی",
+            "✓ Google Drive و OdinVault Replica",
+            "✓ اپ موبایل و اتصال امن به Agent",
+            "✓ هشدارها و Notification Center",
+            "✓ گزارش‌ها، CSV و نمودارهای مدیریتی"
+        ];
+
+        for (var i = 0; i < featureItems.Length; i++)
+        {
+            featureLayout.Controls.Add(new Label
+            {
+                Text = featureItems[i],
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight,
+                ForeColor = Color.FromArgb(51, 65, 85),
+                Font = new Font(Font.FontFamily, 9.5F, FontStyle.Bold),
+                Padding = new Padding(8)
+            }, i % 2, 1 + i / 2);
+        }
+
+        features.Controls.Add(featureLayout);
+        root.Controls.Add(features, 1, 0);
+
+        var architecture = new ReaLTaiizor.Controls.Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            EdgeColor = Color.FromArgb(226, 232, 240)
+        };
+        architecture.Controls.Add(new Label
+        {
+            Text =
+                "ساختار اجرا\r\n\r\n" +
+                "Agent  •  اجرای Jobها و API محلی\r\n" +
+                "Manager  •  کنترل، مانیتورینگ، Restore و تنظیمات\r\n" +
+                "Mobile  •  مشاهده وضعیت و عملیات مجاز از راه دور\r\n\r\n" +
+                "Agent به‌صورت مستقل کار می‌کند؛ بسته شدن Manager باعث توقف زمان‌بندی یا بکاپ‌ها نمی‌شود.",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(22),
+            TextAlign = ContentAlignment.TopRight,
+            Font = new Font(Font.FontFamily, 10F),
+            ForeColor = Color.FromArgb(71, 85, 105)
+        });
+        root.Controls.Add(architecture, 1, 1);
+
+        return root;
+    }
+
     private Control BuildSettingsPage()
     {
         var root = new TableLayoutPanel
@@ -2832,6 +3026,37 @@ internal sealed class MainForm : Form
         };
     }
 
+    private static Button CreateToolbarButton(string text, bool primary = false)
+    {
+        var button = new Button
+        {
+            Text = text,
+            AutoSize = true,
+            Height = 40,
+            MinimumSize = new Size(92, 40),
+            Padding = new Padding(14, 3, 14, 3),
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand,
+            BackColor = primary
+                ? Color.FromArgb(37, 99, 235)
+                : Color.White,
+            ForeColor = primary
+                ? Color.White
+                : Color.FromArgb(51, 65, 85),
+            Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
+        };
+
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = primary
+            ? Color.FromArgb(37, 99, 235)
+            : Color.FromArgb(203, 213, 225);
+        button.FlatAppearance.MouseOverBackColor = primary
+            ? Color.FromArgb(29, 78, 216)
+            : Color.FromArgb(248, 250, 252);
+
+        return button;
+    }
+
     private static void ConfigureButton(Button button, string text, EventHandler handler)
     {
         button.Text = text;
@@ -2839,7 +3064,14 @@ internal sealed class MainForm : Form
         button.Height = 42;
         button.MinimumSize = new Size(0, 42);
         button.Padding = new Padding(14, 4, 14, 4);
-        button.FlatStyle = FlatStyle.System;
+        button.FlatStyle = FlatStyle.Flat;
+        button.BackColor = Color.White;
+        button.ForeColor = Color.FromArgb(51, 65, 85);
+        button.Font = new Font("Segoe UI", 9.25F, FontStyle.Bold);
+        button.Cursor = Cursors.Hand;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = Color.FromArgb(203, 213, 225);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 250, 252);
         button.Click -= handler;
         button.Click += handler;
     }
