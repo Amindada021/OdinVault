@@ -80,21 +80,27 @@ public sealed class BackupScheduler(
         if (!databaseEnabled)
             return;
 
-        CronExpression expression;
+        IReadOnlyList<CronExpression> expressions;
         try
         {
-            expression = CronExpression.Parse(policy.ScheduleCron, CronFormat.Standard);
+            expressions = ParseScheduleExpressions(policy.ScheduleCron);
         }
         catch (CronFormatException ex)
         {
-            logger.LogWarning(ex, "Invalid cron expression {Cron} for policy {PolicyId}.", policy.ScheduleCron, policy.Id);
+            logger.LogWarning(ex, "Invalid cron schedule {Cron} for policy {PolicyId}.", policy.ScheduleCron, policy.Id);
             return;
         }
 
         var now = DateTimeOffset.UtcNow;
         var searchFrom = now.AddDays(-7);
-        var previous = expression
-            .GetOccurrences(searchFrom, now, TimeZoneInfo.Utc, fromInclusive: true, toInclusive: true)
+        var previous = expressions
+            .SelectMany(expression => expression.GetOccurrences(
+                searchFrom,
+                now,
+                TimeZoneInfo.Utc,
+                fromInclusive: true,
+                toInclusive: true))
+            .OrderBy(x => x)
             .LastOrDefault();
 
         if (previous == default)
@@ -164,6 +170,19 @@ public sealed class BackupScheduler(
             occurrenceUtc,
             enqueue.Job.Id,
             enqueue.Status);
+    }
+
+    private static IReadOnlyList<CronExpression> ParseScheduleExpressions(string scheduleCron)
+    {
+        var parts = scheduleCron
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length == 0)
+            throw new CronFormatException("Schedule does not contain a cron expression.");
+
+        return parts
+            .Select(x => CronExpression.Parse(x, CronFormat.Standard))
+            .ToArray();
     }
 
     private static Guid CreateScheduledRequestId(
