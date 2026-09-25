@@ -81,6 +81,9 @@ internal sealed class MainForm : Form
     private readonly ComboBox _backupStatusFilter = new();
     private BackupOverviewResponse? _backupOverview;
 
+    internal bool IsOdinDarkTheme =>
+        _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+
     public MainForm()
     {
         _settings = _settingsStore.Load();
@@ -1411,7 +1414,7 @@ internal sealed class MainForm : Form
         var target = GetSelectedStorageTarget();
         if (target is null)
         {
-            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -1419,7 +1422,7 @@ internal sealed class MainForm : Form
         {
             SetBusy(true);
             var result = await _api.TestStorageTargetAsync(target.Id);
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 result?.Message ?? (result?.Success == true ? "اتصال موفق بود." : "تست اتصال ناموفق بود."),
                 "تست اتصال",
@@ -1442,7 +1445,7 @@ internal sealed class MainForm : Form
         var target = GetSelectedStorageTarget();
         if (target is null)
         {
-            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -1471,7 +1474,7 @@ internal sealed class MainForm : Form
         var target = GetSelectedStorageTarget();
         if (target is null)
         {
-            MessageBox.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "ابتدا یک مقصد را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -1736,7 +1739,7 @@ internal sealed class MainForm : Form
     {
         if (_alertsGrid.CurrentRow?.Tag is not AlertClientResponse alert)
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "ابتدا یک هشدار را انتخاب کنید.",
                 "OdinVault",
@@ -2050,7 +2053,7 @@ internal sealed class MainForm : Form
     {
         if (_backupReport is null)
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "ابتدا گزارش را دریافت کنید.",
                 "OdinVault",
@@ -2101,7 +2104,7 @@ internal sealed class MainForm : Form
             string.Join(Environment.NewLine, lines),
             new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        MessageBox.Show(
+        OdinDialog.Show(
             this,
             "گزارش CSV ذخیره شد و با Excel قابل باز شدن است.",
             "OdinVault",
@@ -2614,7 +2617,7 @@ internal sealed class MainForm : Form
         _settingsStore.Save(_settings);
         ApplyTheme();
 
-        MessageBox.Show(
+        OdinDialog.Show(
             this,
             "تنظیمات Manager ذخیره شد.",
             "OdinVault",
@@ -3634,7 +3637,7 @@ internal sealed class MainForm : Form
                 try
                 {
                     await _api.TestDatabaseAsync(created.Id);
-                    MessageBox.Show(
+                    OdinDialog.Show(
                         this,
                         "دیتابیس ثبت شد و اتصال با موفقیت تست شد.",
                         "OdinVault",
@@ -3643,7 +3646,7 @@ internal sealed class MainForm : Form
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(
+                    OdinDialog.Show(
                         this,
                         $"دیتابیس ثبت شد، اما تست اتصال ناموفق بود:{Environment.NewLine}{ex.Message}",
                         "OdinVault",
@@ -3710,7 +3713,7 @@ internal sealed class MainForm : Form
             await _api.UpdateBackupPolicyAsync(id, dialog.PolicyRequest);
             await RefreshAllAsync();
 
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "تنظیمات دیتابیس با موفقیت بروزرسانی شد.",
                 "OdinVault",
@@ -3735,7 +3738,7 @@ internal sealed class MainForm : Form
         var row = _grid.SelectedRows.Count == 1 ? _grid.SelectedRows[0] : _grid.CurrentRow;
         var name = row is null ? "این دیتابیس" : Convert.ToString(row.Cells["Name"].Value) ?? "این دیتابیس";
 
-        var answer = MessageBox.Show(
+        var answer = OdinDialog.Show(
             this,
             $"«{name}» از OdinVault حذف شود؟{Environment.NewLine}{Environment.NewLine}" +
             "تنظیمات و تاریخچه OdinVault حذف می‌شود، اما فایل‌های بکاپ موجود روی دیسک نگه داشته می‌شوند.",
@@ -3771,7 +3774,7 @@ internal sealed class MainForm : Form
         try
         {
             await _api.TestDatabaseAsync(id);
-            MessageBox.Show(this, "اتصال به SQL Server موفق است.", "تست اتصال", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "اتصال به SQL Server موفق است.", "تست اتصال", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -3794,7 +3797,7 @@ internal sealed class MainForm : Form
             {
                 if (!silent)
                 {
-                    MessageBox.Show(
+                    OdinDialog.Show(
                         this,
                         $"OdinVault به‌روز است. نسخه فعلی: {update.CurrentVersion}",
                         "بروزرسانی OdinVault",
@@ -3804,7 +3807,7 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var answer = MessageBox.Show(
+            var answer = OdinDialog.Show(
                 this,
                 $"نسخه جدید {update.TagName} موجود است.{Environment.NewLine}" +
                 $"نسخه فعلی: {update.CurrentVersion}{Environment.NewLine}{Environment.NewLine}" +
@@ -3830,7 +3833,7 @@ internal sealed class MainForm : Form
             var installer = await _updates.DownloadInstallerAsync(update, progress);
             progressDialog.MarkCompleted();
 
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "دانلود کامل شد. OdinVault Manager بسته می‌شود و نصب نسخه جدید شروع خواهد شد.",
                 "بروزرسانی OdinVault",
@@ -3885,7 +3888,7 @@ internal sealed class MainForm : Form
 
         if (selected.Count == 0)
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "حداقل یک دیتابیس را از ستون «انتخاب» تیک بزنید.",
                 "OdinVault",
@@ -3894,7 +3897,7 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var answer = MessageBox.Show(
+        var answer = OdinDialog.Show(
             this,
             $"برای {selected.Count} دیتابیس انتخاب‌شده همین حالا بکاپ گرفته شود؟",
             "OdinVault",
@@ -3930,7 +3933,7 @@ internal sealed class MainForm : Form
                            "خطاها:" + Environment.NewLine +
                            string.Join(Environment.NewLine, errors);
 
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 message,
                 "OdinVault",
@@ -3956,7 +3959,7 @@ internal sealed class MainForm : Form
             return true;
         }
 
-        MessageBox.Show(this, "ابتدا یک دیتابیس را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        OdinDialog.Show(this, "ابتدا یک دیتابیس را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
         return false;
     }
 
@@ -3979,7 +3982,7 @@ internal sealed class MainForm : Form
 
     private void ShowError(Exception ex)
     {
-        MessageBox.Show(
+        OdinDialog.Show(
             this,
             ex.Message,
             "خطای OdinVault",
@@ -4113,7 +4116,7 @@ internal sealed class EditDatabaseForm : Form
             string.IsNullOrWhiteSpace(_database.Text) ||
             string.IsNullOrWhiteSpace(_backupDirectory.Text))
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "نام، سرور، نام دیتابیس و مسیر بکاپ الزامی است.",
                 "OdinVault",
@@ -4144,7 +4147,7 @@ internal sealed class EditDatabaseForm : Form
         }
         catch (InvalidOperationException ex)
         {
-            MessageBox.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -4285,7 +4288,7 @@ internal sealed class AddDatabaseForm : Form
             string.IsNullOrWhiteSpace(_database.Text) ||
             string.IsNullOrWhiteSpace(_backupDirectory.Text))
         {
-            MessageBox.Show(this, "نام، سرور، نام دیتابیس و مسیر بکاپ الزامی است.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, "نام، سرور، نام دیتابیس و مسیر بکاپ الزامی است.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -4296,7 +4299,7 @@ internal sealed class AddDatabaseForm : Form
         }
         catch (InvalidOperationException ex)
         {
-            MessageBox.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -4331,7 +4334,6 @@ internal sealed class MobileConnectionForm : Form
     private readonly TextBox _apiKey = new() { ReadOnly = true, UseSystemPasswordChar = true };
     private readonly CheckBox _showKey = new() { Text = "نمایش کلید", AutoSize = true };
     private readonly Label _preview = new();
-    private readonly Label _probeStatus = new();
 
     public MobileConnectionForm(AgentApiClient api)
     {
@@ -4514,7 +4516,7 @@ internal sealed class MobileConnectionForm : Form
         copyKey.Click += (_, _) =>
         {
             Clipboard.SetText(_apiKey.Text);
-            MessageBox.Show(this, "کلید API کپی شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "کلید API کپی شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
         };
         keyPanel.Controls.Add(copyKey, 2, 0);
         root.Controls.Add(keyPanel, 0, 4);
@@ -4522,26 +4524,19 @@ internal sealed class MobileConnectionForm : Form
         _showKey.CheckedChanged += (_, _) => _apiKey.UseSystemPasswordChar = !_showKey.Checked;
         root.Controls.Add(_showKey, 0, 5);
 
-        var statusPanel = new TableLayoutPanel
+        var statusPanel = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2
+            Padding = new Padding(0, 8, 0, 0)
         };
-
-        _probeStatus.Dock = DockStyle.Top;
-        _probeStatus.AutoSize = true;
-        _probeStatus.TextAlign = ContentAlignment.MiddleRight;
-        _probeStatus.ForeColor = Color.FromArgb(100, 116, 139);
-        statusPanel.Controls.Add(_probeStatus, 0, 0);
-
         statusPanel.Controls.Add(new Label
         {
-            Text = "تست Port اتصال TCP را از همین ویندوز به Host/Port بررسی می‌کند. تست Agent پاسخ واقعی /api/health و API Key را هم بررسی می‌کند.",
+            Text = "نتیجه تست‌ها در پنجره جدا نمایش داده می‌شود. تست Port اتصال TCP را بررسی می‌کند و تست Agent پاسخ واقعی /api/health و API Key را هم کنترل می‌کند.",
+            Dock = DockStyle.Top,
             AutoSize = true,
             MaximumSize = new Size(660, 0),
             ForeColor = Color.FromArgb(100, 116, 139)
-        }, 0, 1);
+        });
         root.Controls.Add(statusPanel, 0, 6);
 
         var buttons = new FlowLayoutPanel
@@ -4563,7 +4558,7 @@ internal sealed class MobileConnectionForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                OdinDialog.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         };
 
@@ -4579,7 +4574,7 @@ internal sealed class MobileConnectionForm : Form
                     $"API Key: {_apiKey.Text}";
                 Clipboard.SetText(text);
 
-                MessageBox.Show(
+                OdinDialog.Show(
                     this,
                     "URL نهایی و API Key کپی شدند.",
                     "OdinVault",
@@ -4588,7 +4583,7 @@ internal sealed class MobileConnectionForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                OdinDialog.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         };
 
@@ -4602,55 +4597,94 @@ internal sealed class MobileConnectionForm : Form
 
     private async Task TestPortAsync(Button button)
     {
+        var originalText = button.Text;
         try
         {
             var host = NormalizeHost();
             var port = ResolvePort();
             button.Enabled = false;
-            _probeStatus.Text = $"در حال بررسی TCP {host}:{port}...";
+            button.Text = "در حال بررسی...";
 
             var result = await _api.TestPortAsync(host, port);
-            _probeStatus.Text = result.IsOpen
-                ? $"✓ Port {port} باز است و اتصال TCP برقرار شد{(result.LatencyMilliseconds.HasValue ? $" ({result.LatencyMilliseconds.Value:0} ms)" : string.Empty)}."
-                : $"✕ اتصال به Port {port} برقرار نشد: {result.Error}";
-            _probeStatus.ForeColor = result.IsOpen
-                ? Color.FromArgb(22, 135, 82)
-                : Color.FromArgb(190, 65, 65);
+            if (result.IsOpen)
+            {
+                var latency = result.LatencyMilliseconds.HasValue
+                    ? $"{result.LatencyMilliseconds.Value:0} ms"
+                    : "نامشخص";
+                OdinDialog.Show(
+                    this,
+                    $"اتصال TCP با موفقیت برقرار شد.{Environment.NewLine}{Environment.NewLine}" +
+                    $"Host: {host}{Environment.NewLine}" +
+                    $"Port: {port}{Environment.NewLine}" +
+                    $"Latency: {latency}",
+                    "بررسی Port",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                OdinDialog.Show(
+                    this,
+                    $"اتصال به Port برقرار نشد.{Environment.NewLine}{Environment.NewLine}" +
+                    $"Host: {host}{Environment.NewLine}" +
+                    $"Port: {port}{Environment.NewLine}" +
+                    $"جزئیات: {result.Error}",
+                    "بررسی Port",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         catch (Exception ex)
         {
-            _probeStatus.Text = $"✕ {ex.Message}";
-            _probeStatus.ForeColor = Color.FromArgb(190, 65, 65);
+            OdinDialog.Show(
+                this,
+                ex.Message,
+                "بررسی Port",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
         finally
         {
+            button.Text = originalText;
             button.Enabled = true;
         }
     }
 
     private async Task TestAgentAsync(Button button)
     {
+        var originalText = button.Text;
         try
         {
             var url = BuildUrl();
             button.Enabled = false;
-            _probeStatus.Text = $"در حال تست Agent روی {url}...";
+            button.Text = "در حال تست...";
 
             var result = await _api.TestAgentEndpointAsync(url);
-            _probeStatus.Text = result.Success
-                ? $"✓ Agent پاسخ سالم داد: {result.Message}"
-                : $"✕ اتصال Agent ناموفق بود: {result.Message}";
-            _probeStatus.ForeColor = result.Success
-                ? Color.FromArgb(22, 135, 82)
-                : Color.FromArgb(190, 65, 65);
+            OdinDialog.Show(
+                this,
+                result.Success
+                    ? $"Agent با موفقیت پاسخ داد.{Environment.NewLine}{Environment.NewLine}" +
+                      $"URL: {url}{Environment.NewLine}" +
+                      $"Status: {result.Message}"
+                    : $"اتصال Agent ناموفق بود.{Environment.NewLine}{Environment.NewLine}" +
+                      $"URL: {url}{Environment.NewLine}" +
+                      $"جزئیات: {result.Message}",
+                "تست اتصال Agent",
+                MessageBoxButtons.OK,
+                result.Success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (Exception ex)
         {
-            _probeStatus.Text = $"✕ {ex.Message}";
-            _probeStatus.ForeColor = Color.FromArgb(190, 65, 65);
+            OdinDialog.Show(
+                this,
+                ex.Message,
+                "تست اتصال Agent",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
         finally
         {
+            button.Text = originalText;
             button.Enabled = true;
         }
     }
@@ -4662,7 +4696,7 @@ internal sealed class MobileConnectionForm : Form
 
         if (showMessage)
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 $"آدرس اتصال موبایل ذخیره شد:{Environment.NewLine}{url}",
                 "OdinVault",
@@ -4686,7 +4720,6 @@ internal sealed class MobileConnectionForm : Form
             _preview.ForeColor = Color.FromArgb(190, 65, 65);
         }
 
-        _probeStatus.Text = string.Empty;
     }
 
     private string BuildUrl()
