@@ -111,6 +111,50 @@ internal sealed class AgentApiClient : IDisposable
 
     public string GetApiKey() => LoadApiKey();
 
+    public string GetMobileBaseUrl()
+    {
+        var configured = LoadMobileBaseUrl();
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+
+        var host = Environment.MachineName;
+        return $"http://{host}:5188";
+    }
+
+    public void SaveMobileBaseUrl(string value)
+    {
+        if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            throw new InvalidOperationException("آدرس اتصال موبایل باید یک URL معتبر HTTP یا HTTPS باشد.");
+
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "OdinVault");
+        Directory.CreateDirectory(directory);
+
+        File.WriteAllText(
+            Path.Combine(directory, "mobile-base-url.txt"),
+            value.Trim());
+    }
+
+    private static string? LoadMobileBaseUrl()
+    {
+        var configured = Environment.GetEnvironmentVariable("ODINVAULT_MOBILE_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim().TrimEnd('/');
+
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "OdinVault",
+            "mobile-base-url.txt");
+
+        if (!File.Exists(path))
+            return null;
+
+        var value = File.ReadAllText(path).Trim();
+        return string.IsNullOrWhiteSpace(value) ? null : value.TrimEnd('/');
+    }
+
     private HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string uri)
     {
         var apiKey = LoadApiKey();
