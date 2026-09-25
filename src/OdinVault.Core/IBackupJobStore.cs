@@ -71,6 +71,14 @@ public interface IBackupJobStore
         int? percent,
         CancellationToken cancellationToken = default);
 
+    Task<BackupJobMutationResult> AttachBackupRecordAsync(
+        Guid id,
+        Guid executionToken,
+        Guid backupRecordId,
+        string stage,
+        int? percent,
+        CancellationToken cancellationToken = default);
+
     Task<BackupJobMutationResult> FailQueuedAsync(
         Guid id,
         string errorCode,
