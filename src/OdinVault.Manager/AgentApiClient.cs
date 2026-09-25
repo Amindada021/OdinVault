@@ -11,6 +11,7 @@ internal sealed class AgentApiClient : IDisposable
     };
 
     private readonly HttpClient _httpClient;
+    private readonly HttpClient _longRunningHttpClient;
 
     public AgentApiClient()
     {
@@ -18,6 +19,12 @@ internal sealed class AgentApiClient : IDisposable
         {
             BaseAddress = new Uri("http://127.0.0.1:5188/"),
             Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        _longRunningHttpClient = new HttpClient
+        {
+            BaseAddress = _httpClient.BaseAddress,
+            Timeout = Timeout.InfiniteTimeSpan
         };
     }
 
@@ -49,6 +56,41 @@ internal sealed class AgentApiClient : IDisposable
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<DashboardResponse>(JsonOptions, cancellationToken);
+    }
+
+    public async Task<RestorePreflightClientResponse?> PreflightRestoreAsync(
+        Guid backupId,
+        string targetDatabaseName,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Post, "api/restores/preflight");
+        request.Content = JsonContent.Create(
+            new RestoreClientRequest(backupId, targetDatabaseName),
+            options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<RestorePreflightClientResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
+    public async Task<RestoreExecutionClientResponse?> RestoreToNewDatabaseAsync(
+        Guid backupId,
+        string targetDatabaseName,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Post, "api/restores");
+        request.Content = JsonContent.Create(
+            new RestoreClientRequest(backupId, targetDatabaseName),
+            options: JsonOptions);
+        using var response = await _longRunningHttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<RestoreExecutionClientResponse>(
+            JsonOptions,
+            cancellationToken);
     }
 
     public async Task<StorageOverviewResponse?> GetStorageOverviewAsync(
@@ -344,7 +386,11 @@ internal sealed class AgentApiClient : IDisposable
             $"Agent خطای {(int)response.StatusCode} ({response.ReasonPhrase}) برگرداند.{Environment.NewLine}{body}");
     }
 
-    public void Dispose() => _httpClient.Dispose();
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+        _longRunningHttpClient.Dispose();
+    }
 }
 
 internal sealed record HealthResponse(string? Service, string? Status, DateTime Utc);
@@ -398,6 +444,36 @@ internal sealed record DashboardActivityResponse(
     DateTime StartedAtUtc,
     DateTime? CompletedAtUtc,
     string? Error);
+
+internal sealed record RestoreClientRequest(
+    Guid BackupId,
+    string TargetDatabaseName);
+
+internal sealed record RestorePreflightClientResponse(
+    Guid BackupId,
+    Guid DatabaseEndpointId,
+    string EndpointName,
+    string SourceDatabaseName,
+    string TargetDatabaseName,
+    string BackupFileName,
+    long? BackupSizeBytes,
+    int VerificationStatus,
+    string ProductVersion,
+    string DataDirectory,
+    string LogDirectory,
+    IReadOnlyList<RestoreFilePlanClientResponse> Files);
+
+internal sealed record RestoreFilePlanClientResponse(
+    string LogicalName,
+    string Type,
+    string TargetPath);
+
+internal sealed record RestoreExecutionClientResponse(
+    Guid BackupId,
+    Guid DatabaseEndpointId,
+    string TargetDatabaseName,
+    DateTime CompletedAtUtc,
+    double DurationSeconds);
 
 internal sealed record StorageOverviewResponse(
     StorageLocalOverviewResponse Local,
