@@ -31,6 +31,8 @@ internal sealed class DiscoverDatabasesForm : Form
         RightToLeftLayout = true;
 
         BuildUi();
+    
+        UiLayout.Apply(this);
     }
 
     private void BuildUi()
