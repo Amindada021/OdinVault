@@ -661,26 +661,53 @@ internal sealed class MainForm : Form
 
     private Control BuildKpiCard(string title, Label value, string subtitle)
     {
-        var card = new TableLayoutPanel
+        var accent = title.Contains("خطا", StringComparison.Ordinal)
+            ? Color.FromArgb(239, 68, 68)
+            : title.Contains("Job", StringComparison.Ordinal)
+                ? Color.FromArgb(14, 165, 233)
+                : title.Contains("فضای", StringComparison.Ordinal)
+                    ? Color.FromArgb(139, 92, 246)
+                    : Color.FromArgb(34, 197, 94);
+
+        var card = new ReaLTaiizor.Controls.Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
             Margin = new Padding(8),
-            Padding = new Padding(20, 16, 20, 16),
+            Padding = new Padding(1),
             BackColor = Color.White,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+            EdgeColor = Color.FromArgb(226, 232, 240)
         };
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
-        card.Controls.Add(new Label
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = new Padding(18, 16, 18, 14),
+            BackColor = Color.White
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 6));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+
+        var accentBar = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 4, 0, 4),
+            BackColor = accent
+        };
+        layout.Controls.Add(accentBar, 1, 0);
+        layout.SetRowSpan(accentBar, 3);
+
+        layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(95, 105, 120),
+            ForeColor = Color.FromArgb(100, 116, 139),
             Font = new Font(Font.FontFamily, 9.5F, FontStyle.Bold)
         }, 0, 0);
 
@@ -688,47 +715,58 @@ internal sealed class MainForm : Form
         value.Dock = DockStyle.Fill;
         value.TextAlign = ContentAlignment.MiddleRight;
         value.Font = new Font(Font.FontFamily, 27F, FontStyle.Bold);
-        value.ForeColor = Color.FromArgb(35, 45, 60);
-        card.Controls.Add(value, 0, 1);
+        value.ForeColor = Color.FromArgb(15, 23, 42);
+        layout.Controls.Add(value, 0, 1);
 
-        card.Controls.Add(new Label
+        layout.Controls.Add(new Label
         {
             Text = subtitle,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(130, 140, 155),
-            Font = new Font(Font.FontFamily, 8.5F)
+            ForeColor = Color.FromArgb(148, 163, 184),
+            Font = new Font(Font.FontFamily, 9F)
         }, 0, 2);
 
+        card.Controls.Add(layout);
         return card;
     }
 
     private Control BuildDashboardSection(string title, Control content)
     {
-        var card = new TableLayoutPanel
+        var card = new ReaLTaiizor.Controls.Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            EdgeColor = Color.FromArgb(226, 232, 240)
+        };
+
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
-            Margin = new Padding(6),
-            Padding = new Padding(1),
-            BackColor = Color.White,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.White
         };
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        card.Controls.Add(new Label
+        layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Padding = new Padding(14, 0, 14, 0),
+            Padding = new Padding(18, 0, 18, 0),
             TextAlign = ContentAlignment.MiddleRight,
             Font = new Font(Font.FontFamily, 11F, FontStyle.Bold),
-            ForeColor = Color.FromArgb(45, 55, 70)
+            ForeColor = Color.FromArgb(30, 41, 59)
         }, 0, 0);
 
-        card.Controls.Add(content, 0, 1);
+        content.Margin = new Padding(10, 0, 10, 10);
+        layout.Controls.Add(content, 0, 1);
+        card.Controls.Add(layout);
         return card;
     }
 
@@ -2191,12 +2229,13 @@ internal sealed class MainForm : Form
 
         _settingTheme.DropDownStyle = ComboBoxStyle.DropDownList;
         _settingTheme.Width = 180;
-        _settingTheme.Items.AddRange(["روشن", "تیره"]);
+        _settingTheme.Items.Clear();
+        _settingTheme.Items.Add("Odin Light");
         panel.Controls.Add(_settingTheme, 0, 1);
 
         panel.Controls.Add(new Label
         {
-            Text = "تغییر تم بلافاصله روی صفحه‌های باز اعمال می‌شود. پنجره همچنان قابل Resize و Maximize است.",
+            Text = "نسخه جدید ظاهر OdinVault فعلاً روی Odin Light متمرکز است. Dark قدیمی حذف شده تا بعداً یک Dark واقعی و مستقل طراحی شود.",
             AutoSize = true,
             MaximumSize = new Size(430, 0),
             ForeColor = Color.FromArgb(105, 115, 130),
@@ -2212,10 +2251,7 @@ internal sealed class MainForm : Form
         };
         apply.Click += (_, _) =>
         {
-            _settings = _settings with
-            {
-                Theme = _settingTheme.SelectedIndex == 1 ? "Dark" : "Light"
-            };
+            _settings = _settings with { Theme = "Light" };
             _settingsStore.Save(_settings);
             ApplyTheme();
         };
@@ -2358,9 +2394,7 @@ internal sealed class MainForm : Form
         _settingMinimizeToTray.Checked = _settings.MinimizeToTray;
         _settingTrayNotifications.Checked = _settings.ShowTrayNotifications;
         _settingAutoUpdate.Checked = _settings.CheckForUpdatesOnStart;
-        _settingTheme.SelectedIndex = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
-            ? 1
-            : 0;
+        _settingTheme.SelectedIndex = 0;
         _settingMobileUrl.Text = _api.GetMobileBaseUrl();
         _settingVersion.Text = $"نسخه Manager: {_updates.GetCurrentVersion()}";
     }
@@ -2372,7 +2406,7 @@ internal sealed class MainForm : Form
             _settingMinimizeToTray.Checked,
             _settingTrayNotifications.Checked,
             _settingAutoUpdate.Checked,
-            _settingTheme.SelectedIndex == 1 ? "Dark" : "Light");
+            "Light");
 
         _settingsStore.Save(_settings);
         ApplyTheme();
@@ -2544,33 +2578,25 @@ internal sealed class MainForm : Form
 
     private void ApplyTheme()
     {
-        var dark = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
-        BackColor = dark
-            ? Color.FromArgb(24, 29, 38)
-            : Color.FromArgb(245, 247, 250);
-
+        BackColor = Color.FromArgb(246, 248, 252);
         ApplyThemeToContent();
     }
 
     private void ApplyThemeToContent()
     {
-        var dark = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
-        var background = dark
-            ? Color.FromArgb(24, 29, 38)
-            : Color.FromArgb(245, 247, 250);
-        var surface = dark
-            ? Color.FromArgb(34, 41, 52)
-            : Color.White;
-        var primary = dark
-            ? Color.FromArgb(226, 232, 240)
-            : Color.FromArgb(45, 55, 70);
-        var secondary = dark
-            ? Color.FromArgb(164, 174, 188)
-            : Color.FromArgb(105, 115, 130);
+        var background = Color.FromArgb(246, 248, 252);
+        var surface = Color.White;
+        var primary = Color.FromArgb(30, 41, 59);
+        var secondary = Color.FromArgb(100, 116, 139);
 
         _contentHost.BackColor = background;
-
-        ApplyThemeRecursive(_contentHost, dark, background, surface, primary, secondary);
+        ApplyThemeRecursive(
+            _contentHost,
+            dark: false,
+            background,
+            surface,
+            primary,
+            secondary);
     }
 
     private static void ApplyThemeRecursive(
