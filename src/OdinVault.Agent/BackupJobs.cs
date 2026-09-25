@@ -185,12 +185,20 @@ public sealed class BackupJobs(
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var store = scope.ServiceProvider.GetRequiredService<IBackupJobStore>();
-                var result = await store.UpdateProgressAsync(
-                    jobId,
-                    executionToken,
-                    progress.Stage,
-                    progress.Percent,
-                    CancellationToken.None);
+                var result = progress.Backup is { } backup
+                    ? await store.AttachBackupRecordAsync(
+                        jobId,
+                        executionToken,
+                        backup.Id,
+                        progress.Stage,
+                        progress.Percent,
+                        CancellationToken.None)
+                    : await store.UpdateProgressAsync(
+                        jobId,
+                        executionToken,
+                        progress.Stage,
+                        progress.Percent,
+                        CancellationToken.None);
 
                 if (result.Status != BackupJobMutationStatus.Updated)
                     throw new InvalidOperationException(
