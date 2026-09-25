@@ -106,3 +106,95 @@ jobs:
             --target "${{ github.sha }}" `
             --title "OdinVault $tag" `
             --generate-notes
+
+
+  android-mobile:
+    if: github.event_name != 'pull_request'
+    needs: [build, windows-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform
+        working-directory: mobile
+        shell: bash
+        run: |
+          flutter create --platforms=android --org com.odinvault --project-name odinvault_mobile .
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("android/app/src/main/AndroidManifest.xml")
+          text = path.read_text()
+          text = text.replace('android:label="odinvault_mobile"', 'android:label="OdinVault"')
+          text = text.replace(
+              'android:name="${applicationName}"',
+              'android:name="${applicationName}"\n        android:usesCleartextTraffic="true"'
+          )
+          path.write_text(text)
+          PY
+
+      - name: Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze mobile
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Build Android APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Read versions
+        id: versions
+        shell: bash
+        run: |
+          MANAGER_VERSION=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("src/OdinVault.Manager/OdinVault.Manager.csproj").getroot()
+          version = next((x.text for x in root.iter("Version") if x.text), None)
+          if not version:
+              raise SystemExit("Manager version not found")
+          print(version)
+          PY
+          )
+          MOBILE_VERSION=$(awk '/^version:/ {print $2}' mobile/pubspec.yaml | cut -d+ -f1)
+          echo "manager_version=$MANAGER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "mobile_version=$MOBILE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Android release files
+        shell: bash
+        run: |
+          MOBILE_VERSION="${{ steps.versions.outputs.mobile_version }}"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "OdinVault-Mobile-v$MOBILE_VERSION.apk"
+          sha256sum "OdinVault-Mobile-v$MOBILE_VERSION.apk" > "OdinVault-Mobile-v$MOBILE_VERSION.apk.sha256"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OdinVault-Mobile-v${{ steps.versions.outputs.mobile_version }}
+          path: |
+            OdinVault-Mobile-v${{ steps.versions.outputs.mobile_version }}.apk
+            OdinVault-Mobile-v${{ steps.versions.outputs.mobile_version }}.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach Android APK to OdinVault Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v${{ steps.versions.outputs.manager_version }}"
+          APK="OdinVault-Mobile-v${{ steps.versions.outputs.mobile_version }}.apk"
+          SUM="$APK.sha256"
+
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null
+          gh release upload "$TAG" "$APK" "$SUM" --clobber --repo "${{ github.repository }}"
