@@ -56,6 +56,9 @@ internal sealed class MainForm : Form
     private readonly CheckBox _settingTrayNotifications = new();
     private readonly CheckBox _settingAutoUpdate = new();
     private readonly ComboBox _settingTheme = new();
+    private readonly ComboBox _settingLanguage = new();
+    private FlowLayoutPanel? _navigationHost;
+    private string _currentPageKey = "dashboard";
     private readonly TextBox _settingMobileUrl = new();
     private readonly Label _settingVersion = new();
     private readonly ComboBox _reportRange = new();
@@ -99,8 +102,7 @@ internal sealed class MainForm : Form
         MinimumSize = new Size(1180, 760);
         Size = new Size(1440, 900);
         Font = new Font("Segoe UI", 10F);
-        RightToLeft = RightToLeft.Yes;
-        RightToLeftLayout = true;
+        ApplyFormDirection();
 
         BuildUi();
         ConfigureTray();
@@ -182,14 +184,14 @@ internal sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
 
-        _pageTitle.Text = "داشبورد";
+        _pageTitle.Text = UiText.Get("page.dashboard", _settings.Language);
         _pageTitle.AutoSize = false;
         _pageTitle.Dock = DockStyle.Fill;
         _pageTitle.Font = new Font(Font.FontFamily, 22F, FontStyle.Bold);
         _pageTitle.TextAlign = ContentAlignment.BottomRight;
         _pageTitle.ForeColor = Color.FromArgb(30, 41, 59);
 
-        _agentStatus.Text = "در حال بررسی Agent...";
+        _agentStatus.Text = UiText.Get("agent.checking", _settings.Language);
         _agentStatus.AutoSize = false;
         _agentStatus.Dock = DockStyle.Fill;
         _agentStatus.TextAlign = ContentAlignment.BottomLeft;
@@ -203,7 +205,7 @@ internal sealed class MainForm : Form
 
         var subtitle = new Label
         {
-            Text = "کنترل سلامت، بکاپ‌ها و زیرساخت ذخیره‌سازی",
+            Text = UiText.Get("shell.subtitle", _settings.Language),
             AutoSize = false,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopRight,
@@ -293,8 +295,10 @@ internal sealed class MainForm : Form
         var navigation = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RightToLeft = RightToLeft.No,
-            FlowDirection = FlowDirection.LeftToRight,
+            RightToLeft = UiText.IsPersian(_settings.Language) ? RightToLeft.Yes : RightToLeft.No,
+            FlowDirection = UiText.IsPersian(_settings.Language)
+                ? FlowDirection.RightToLeft
+                : FlowDirection.LeftToRight,
             WrapContents = false,
             AutoScroll = true,
             Margin = Padding.Empty,
@@ -302,16 +306,17 @@ internal sealed class MainForm : Form
             BackColor = Color.White
         };
 
-        AddNavigationButton(navigation, "dashboard", "داشبورد", 100);
-        AddNavigationButton(navigation, "databases", "دیتابیس‌ها", 112);
-        AddNavigationButton(navigation, "backups", "بکاپ‌ها", 96);
-        AddNavigationButton(navigation, "storage", "ذخیره‌سازی", 112);
-        AddNavigationButton(navigation, "restore", "بازیابی", 96);
-        AddNavigationButton(navigation, "alerts", "هشدارها", 96);
-        AddNavigationButton(navigation, "reports", "گزارش‌ها", 96);
-        AddNavigationButton(navigation, "mobile", "اتصال موبایل", 112);
-        AddNavigationButton(navigation, "settings", "تنظیمات", 96);
-        AddNavigationButton(navigation, "about", "ⓘ درباره", 92);
+        AddNavigationButton(navigation, "dashboard", UiText.Get("nav.dashboard", _settings.Language), 100);
+        AddNavigationButton(navigation, "databases", UiText.Get("nav.databases", _settings.Language), 112);
+        AddNavigationButton(navigation, "backups", UiText.Get("nav.backups", _settings.Language), 96);
+        AddNavigationButton(navigation, "storage", UiText.Get("nav.storage", _settings.Language), 112);
+        AddNavigationButton(navigation, "restore", UiText.Get("nav.restore", _settings.Language), 96);
+        AddNavigationButton(navigation, "alerts", UiText.Get("nav.alerts", _settings.Language), 96);
+        AddNavigationButton(navigation, "reports", UiText.Get("nav.reports", _settings.Language), 96);
+        AddNavigationButton(navigation, "mobile", UiText.Get("nav.mobile", _settings.Language), 112);
+        AddNavigationButton(navigation, "settings", UiText.Get("nav.settings", _settings.Language), 96);
+        AddNavigationButton(navigation, "about", UiText.Get("nav.about", _settings.Language), 92);
+        _navigationHost = navigation;
         layout.Controls.Add(navigation, 1, 0);
 
         _sidebarAgentStatus.Text = "● Agent در حال بررسی";
@@ -347,7 +352,7 @@ internal sealed class MainForm : Form
             HoverTextColor = Color.FromArgb(37, 99, 235),
             BorderColor = Color.FromArgb(226, 232, 240),
             Cursor = Cursors.Hand,
-            RightToLeft = RightToLeft.Yes
+            RightToLeft = UiText.IsPersian(_settings.Language) ? RightToLeft.Yes : RightToLeft.No
         };
 
         button.Click += (_, _) => ShowPage(key);
@@ -357,6 +362,7 @@ internal sealed class MainForm : Form
 
     private void ShowPage(string key)
     {
+        _currentPageKey = key;
         foreach (var item in _navigationButtons)
         {
             var active = string.Equals(item.Key, key, StringComparison.Ordinal);
@@ -380,57 +386,57 @@ internal sealed class MainForm : Form
             switch (key)
             {
                 case "databases":
-                    _pageTitle.Text = "دیتابیس‌ها";
+                    _pageTitle.Text = UiText.Get("page.databases", _settings.Language);
                     _databasesPage ??= BuildDatabasesPage();
                     _contentHost.Controls.Add(_databasesPage);
                     break;
                 case "dashboard":
-                    _pageTitle.Text = "داشبورد";
+                    _pageTitle.Text = UiText.Get("page.dashboard", _settings.Language);
                     _dashboardPage ??= BuildDashboardPage();
                     _contentHost.Controls.Add(_dashboardPage);
                     break;
                 case "backups":
-                    _pageTitle.Text = "بکاپ‌ها";
+                    _pageTitle.Text = UiText.Get("page.backups", _settings.Language);
                     _backupsPage ??= BuildBackupsPage();
                     _contentHost.Controls.Add(_backupsPage);
                     _ = RefreshBackupsPageAsync();
                     break;
                 case "storage":
-                    _pageTitle.Text = "ذخیره‌سازی";
+                    _pageTitle.Text = UiText.Get("page.storage", _settings.Language);
                     _storagePage ??= BuildStoragePage();
                     _contentHost.Controls.Add(_storagePage);
                     _ = RefreshStoragePageAsync();
                     break;
                 case "restore":
-                    _pageTitle.Text = "بازیابی";
+                    _pageTitle.Text = UiText.Get("page.restore", _settings.Language);
                     _restorePage ??= BuildRestorePage();
                     _contentHost.Controls.Add(_restorePage);
                     break;
                 case "alerts":
-                    _pageTitle.Text = "هشدارها";
+                    _pageTitle.Text = UiText.Get("page.alerts", _settings.Language);
                     _alertsPage ??= BuildAlertsPage();
                     _contentHost.Controls.Add(_alertsPage);
                     _ = RefreshAlertsPageAsync();
                     break;
                 case "reports":
-                    _pageTitle.Text = "گزارش‌ها";
+                    _pageTitle.Text = UiText.Get("page.reports", _settings.Language);
                     _reportsPage ??= BuildReportsPage();
                     _contentHost.Controls.Add(_reportsPage);
                     _ = RefreshReportsPageAsync();
                     break;
                 case "mobile":
-                    _pageTitle.Text = "اتصال موبایل";
+                    _pageTitle.Text = UiText.Get("page.mobile", _settings.Language);
                     _mobilePage ??= new MobileConnectionPage(_api, ApplyThemeToContent);
                     _mobilePage.Reload();
                     _contentHost.Controls.Add(_mobilePage);
                     break;
                 case "about":
-                    _pageTitle.Text = "درباره OdinVault";
+                    _pageTitle.Text = UiText.Get("page.about", _settings.Language);
                     _aboutPage ??= BuildAboutPage();
                     _contentHost.Controls.Add(_aboutPage);
                     break;
                 default:
-                    _pageTitle.Text = "تنظیمات";
+                    _pageTitle.Text = UiText.Get("page.settings", _settings.Language);
                     _settingsPage ??= BuildSettingsPage();
                     _contentHost.Controls.Add(_settingsPage);
                     LoadSettingsIntoControls();
@@ -2340,19 +2346,19 @@ internal sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
 
         root.Controls.Add(BuildSettingsCard(
-            "رفتار برنامه",
+            UiText.Get("settings.behavior", _settings.Language),
             BuildGeneralSettingsContent()), 0, 0);
 
         root.Controls.Add(BuildSettingsCard(
-            "ظاهر",
+            UiText.Get("settings.appearance", _settings.Language),
             BuildAppearanceSettingsContent()), 1, 0);
 
         root.Controls.Add(BuildSettingsCard(
-            "Agent و اتصال موبایل",
+            UiText.Get("settings.agentMobile", _settings.Language),
             BuildAgentSettingsContent()), 0, 1);
 
         root.Controls.Add(BuildSettingsCard(
-            "بروزرسانی و درباره",
+            UiText.Get("settings.updateAbout", _settings.Language),
             BuildUpdateSettingsContent()), 1, 1);
 
         return root;
@@ -2438,13 +2444,13 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 7,
             Padding = new Padding(6)
         };
 
         panel.Controls.Add(new Label
         {
-            Text = "تم رابط کاربری",
+            Text = UiText.Get("settings.theme", _settings.Language),
             AutoSize = true,
             Margin = new Padding(6)
         }, 0, 0);
@@ -2452,35 +2458,64 @@ internal sealed class MainForm : Form
         _settingTheme.DropDownStyle = ComboBoxStyle.DropDownList;
         _settingTheme.Width = 180;
         _settingTheme.Items.Clear();
-        _settingTheme.Items.AddRange(["Odin Light", "Odin Dark"]);
+        _settingTheme.Items.AddRange([
+            UiText.Get("theme.light", _settings.Language),
+            UiText.Get("theme.dark", _settings.Language)
+        ]);
         panel.Controls.Add(_settingTheme, 0, 1);
 
         panel.Controls.Add(new Label
         {
-            Text = "Odin Dark یک palette مستقل برای پس‌زمینه، کارت‌ها، جدول‌ها، نمودارها و Top Navigation دارد.",
+            Text = UiText.Get("settings.language", _settings.Language),
+            AutoSize = true,
+            Margin = new Padding(6, 14, 6, 4)
+        }, 0, 2);
+
+        _settingLanguage.DropDownStyle = ComboBoxStyle.DropDownList;
+        _settingLanguage.Width = 180;
+        _settingLanguage.Items.Clear();
+        _settingLanguage.Items.AddRange([
+            UiText.Get("settings.language.fa", _settings.Language),
+            UiText.Get("settings.language.en", _settings.Language)
+        ]);
+        panel.Controls.Add(_settingLanguage, 0, 3);
+
+        panel.Controls.Add(new Label
+        {
+            Text = UiText.Get("settings.language.note", _settings.Language),
             AutoSize = true,
             MaximumSize = new Size(430, 0),
             ForeColor = Color.FromArgb(105, 115, 130),
-            Margin = new Padding(6, 14, 6, 6)
-        }, 0, 2);
+            Margin = new Padding(6, 12, 6, 6)
+        }, 0, 4);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "Odin Light / Odin Dark",
+            AutoSize = true,
+            ForeColor = Color.FromArgb(105, 115, 130),
+            Margin = new Padding(6)
+        }, 0, 5);
 
         var apply = new Button
         {
-            Text = "اعمال ظاهر",
+            Text = UiText.Get("settings.apply", _settings.Language),
             AutoSize = true,
             Height = 36,
-            Margin = new Padding(6, 16, 6, 6)
+            Margin = new Padding(6, 12, 6, 6)
         };
         apply.Click += (_, _) =>
         {
             _settings = _settings with
             {
-                Theme = _settingTheme.SelectedIndex == 1 ? "Dark" : "Light"
+                Theme = _settingTheme.SelectedIndex == 1 ? "Dark" : "Light",
+                Language = _settingLanguage.SelectedIndex == 1 ? "en" : "fa"
             };
             _settingsStore.Save(_settings);
+            ApplyLanguage();
             ApplyTheme();
         };
-        panel.Controls.Add(apply, 0, 3);
+        panel.Controls.Add(apply, 0, 6);
         return panel;
     }
 
@@ -2592,6 +2627,7 @@ internal sealed class MainForm : Form
         _settingTheme.SelectedIndex = _settings.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
             ? 1
             : 0;
+        _settingLanguage.SelectedIndex = UiText.IsPersian(_settings.Language) ? 0 : 1;
         _settingMobileUrl.Text = _api.GetMobileBaseUrl();
         _settingVersion.Text = $"نسخه Manager: {_updates.GetCurrentVersion()}";
     }
@@ -2603,7 +2639,8 @@ internal sealed class MainForm : Form
             _settingMinimizeToTray.Checked,
             _settingTrayNotifications.Checked,
             _settingAutoUpdate.Checked,
-            _settingTheme.SelectedIndex == 1 ? "Dark" : "Light");
+            _settingTheme.SelectedIndex == 1 ? "Dark" : "Light",
+            _settingLanguage.SelectedIndex == 1 ? "en" : "fa");
 
         _settingsStore.Save(_settings);
         ApplyTheme();
@@ -2771,6 +2808,68 @@ internal sealed class MainForm : Form
         _trayIcon.BalloonTipText = message.Length > 240 ? message[..240] : message;
         _trayIcon.BalloonTipIcon = icon;
         _trayIcon.ShowBalloonTip(4000);
+    }
+
+    private void ApplyFormDirection()
+    {
+        var rtl = UiText.IsPersian(_settings.Language);
+        RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+        RightToLeftLayout = rtl;
+    }
+
+    private void ApplyLanguage()
+    {
+        ApplyFormDirection();
+
+        if (_navigationHost is not null)
+        {
+            _navigationHost.RightToLeft = UiText.IsPersian(_settings.Language)
+                ? RightToLeft.Yes
+                : RightToLeft.No;
+            _navigationHost.FlowDirection = UiText.IsPersian(_settings.Language)
+                ? FlowDirection.RightToLeft
+                : FlowDirection.LeftToRight;
+        }
+
+        var navKeys = new[]
+        {
+            "dashboard", "databases", "backups", "storage", "restore",
+            "alerts", "reports", "mobile", "settings", "about"
+        };
+        foreach (var key in navKeys)
+        {
+            if (_navigationButtons.TryGetValue(key, out var button))
+            {
+                button.Text = UiText.Get($"nav.{key}", _settings.Language);
+                button.RightToLeft = UiText.IsPersian(_settings.Language)
+                    ? RightToLeft.Yes
+                    : RightToLeft.No;
+            }
+        }
+
+        _agentStatus.Text = UiText.Get("agent.checking", _settings.Language);
+        ApplyDirectionRecursive(this, UiText.IsPersian(_settings.Language));
+        ShowPage(_currentPageKey);
+    }
+
+    private static void ApplyDirectionRecursive(Control control, bool rtl)
+    {
+        if (control is TextBoxBase or ComboBox)
+        {
+            // Technical fields explicitly configured as LTR keep their direction.
+            if (control.RightToLeft != RightToLeft.No)
+                control.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+        }
+        else if (control is not ReaLTaiizor.Controls.HopeButton)
+        {
+            control.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+        }
+
+        if (control is DataGridView grid)
+            grid.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+
+        foreach (Control child in control.Controls)
+            ApplyDirectionRecursive(child, rtl);
     }
 
     private void ApplyTheme()
