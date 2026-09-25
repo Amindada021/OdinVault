@@ -19,6 +19,7 @@ internal sealed class MainForm : Form
     private readonly Panel _contentHost = new();
     private readonly Label _pageTitle = new();
     private readonly Dictionary<string, Button> _navigationButtons = new(StringComparer.Ordinal);
+    private Control? _databasesPage;
 
     public MainForm()
     {
@@ -257,7 +258,8 @@ internal sealed class MainForm : Form
             {
                 case "databases":
                     _pageTitle.Text = "دیتابیس‌ها";
-                    _contentHost.Controls.Add(BuildDatabasesPage());
+                    _databasesPage ??= BuildDatabasesPage();
+                    _contentHost.Controls.Add(_databasesPage);
                     break;
                 case "dashboard":
                     _pageTitle.Text = "داشبورد";
