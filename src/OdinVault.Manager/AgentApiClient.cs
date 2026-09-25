@@ -95,7 +95,13 @@ internal sealed class AgentApiClient : IDisposable
 
     public async Task RunBackupAsync(Guid databaseId, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
     {
-        var job = await SendAsync<BackupJobResponse>(HttpMethod.Post, $"api/databases/{databaseId}/backup-jobs", null, cancellationToken);
+        var requestId = Guid.NewGuid();
+        var job = await SendAsync<BackupJobResponse>(
+            HttpMethod.Post,
+            $"api/databases/{databaseId}/backup-jobs",
+            null,
+            cancellationToken,
+            requestId);
         while (true)
         {
             var status = job.Stage switch
@@ -114,9 +120,16 @@ internal sealed class AgentApiClient : IDisposable
         }
     }
 
-    public async Task<T> SendAsync<T>(HttpMethod method, string url, object? body = null, CancellationToken ct = default)
+    public async Task<T> SendAsync<T>(
+        HttpMethod method,
+        string url,
+        object? body = null,
+        CancellationToken ct = default,
+        Guid? requestId = null)
     {
         using var request = CreateAuthorizedRequest(method, url);
+        if (requestId.HasValue)
+            request.Headers.TryAddWithoutValidation("X-OdinVault-Request-Id", requestId.Value.ToString());
         if (body is not null) request.Content = JsonContent.Create(body, options: JsonOptions);
         using var response = await _httpClient.SendAsync(request, ct);
         await EnsureSuccessAsync(response, ct);
