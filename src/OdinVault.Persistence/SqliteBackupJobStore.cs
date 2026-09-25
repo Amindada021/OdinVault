@@ -90,7 +90,10 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                 : new BackupJobEnqueueResult(BackupJobEnqueueStatus.ActiveConflict, Snapshot(conflicting), conflicting.Id);
         }
 
-        throw lastUniqueConflict ?? new InvalidOperationException("Could not resolve backup job enqueue conflict.");
+        if (lastUniqueConflict is not null)
+            throw lastUniqueConflict;
+
+        throw new InvalidOperationException("Could not resolve backup job enqueue conflict.");
     }
 
     public async Task<BackupJobSnapshot?> GetAsync(
