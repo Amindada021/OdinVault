@@ -1288,7 +1288,7 @@ internal sealed class MainForm : Form
     private Control BuildDatabaseInfoCard(DatabaseDetailsResponse details)
     {
         var latestReplicas = details.Backups.Count == 0
-            ? []
+            ? Array.Empty<DatabaseReplicaHistoryResponse>()
             : details.Replicas
                 .Where(x => x.BackupRecordId == details.Backups[0].Id)
                 .ToArray();
