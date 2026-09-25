@@ -84,6 +84,8 @@ internal sealed class UpdateProgressForm : Form
 
             Win11Backdrop.TryApply(this, transient: true, dark: dark);
         };
+    
+        UiLayout.Apply(this);
     }
 
     public void Report(UpdateDownloadProgress value)
