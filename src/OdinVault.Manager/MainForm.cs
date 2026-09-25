@@ -28,7 +28,7 @@ internal sealed class MainForm : Form
     private readonly Button _updateButton = new();
     private readonly Panel _contentHost = new();
     private readonly Label _pageTitle = new();
-    private readonly Dictionary<string, Button> _navigationButtons = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ReaLTaiizor.Controls.HopeButton> _navigationButtons = new(StringComparer.Ordinal);
     private readonly Label _protectedValue = new();
     private readonly Label _failedValue = new();
     private readonly Label _activeJobsValue = new();
@@ -145,48 +145,44 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        BackColor = Color.FromArgb(245, 247, 250);
+        BackColor = Color.FromArgb(246, 248, 252);
 
         var shell = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
+            ColumnCount = 1,
+            RowCount = 3,
             Margin = Padding.Empty,
-            Padding = Padding.Empty
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(246, 248, 252)
         };
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
+        shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(shell);
 
-        var main = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            Padding = new Padding(28, 22, 28, 28),
-            BackColor = Color.FromArgb(245, 247, 250)
-        };
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        shell.Controls.Add(main, 0, 0);
+        shell.Controls.Add(BuildTopNavigation(), 0, 0);
 
         var header = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 2,
-            Margin = Padding.Empty
+            Margin = Padding.Empty,
+            Padding = new Padding(30, 14, 30, 8),
+            BackColor = Color.FromArgb(246, 248, 252)
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
 
         _pageTitle.Text = "داشبورد";
         _pageTitle.AutoSize = false;
         _pageTitle.Dock = DockStyle.Fill;
-        _pageTitle.Font = new Font(Font.FontFamily, 20F, FontStyle.Bold);
+        _pageTitle.Font = new Font(Font.FontFamily, 22F, FontStyle.Bold);
         _pageTitle.TextAlign = ContentAlignment.BottomRight;
+        _pageTitle.ForeColor = Color.FromArgb(30, 41, 59);
 
         _agentStatus.Text = "در حال بررسی Agent...";
         _agentStatus.AutoSize = false;
@@ -198,133 +194,151 @@ internal sealed class MainForm : Form
         _lastRefresh.AutoSize = false;
         _lastRefresh.Dock = DockStyle.Fill;
         _lastRefresh.TextAlign = ContentAlignment.TopLeft;
-        _lastRefresh.ForeColor = Color.FromArgb(105, 115, 130);
+        _lastRefresh.ForeColor = Color.FromArgb(100, 116, 139);
 
         var subtitle = new Label
         {
-            Text = "مدیریت بکاپ، سلامت و ذخیره‌سازی",
+            Text = "کنترل سلامت، بکاپ‌ها و زیرساخت ذخیره‌سازی",
             AutoSize = false,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopRight,
-            ForeColor = Color.FromArgb(105, 115, 130)
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Font = new Font(Font.FontFamily, 9.5F)
         };
 
         header.Controls.Add(_pageTitle, 0, 0);
         header.Controls.Add(_agentStatus, 1, 0);
         header.Controls.Add(subtitle, 0, 1);
         header.Controls.Add(_lastRefresh, 1, 1);
-        main.Controls.Add(header, 0, 0);
+        shell.Controls.Add(header, 0, 1);
+
+        var contentFrame = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(30, 8, 30, 28),
+            Margin = Padding.Empty,
+            BackColor = Color.FromArgb(246, 248, 252)
+        };
 
         _contentHost.Dock = DockStyle.Fill;
         _contentHost.Margin = Padding.Empty;
         _contentHost.Padding = Padding.Empty;
-        _contentHost.BackColor = Color.FromArgb(245, 247, 250);
-        main.Controls.Add(_contentHost, 0, 1);
-
-        var sidebar = BuildSidebar();
-        shell.Controls.Add(sidebar, 1, 0);
+        _contentHost.BackColor = Color.FromArgb(246, 248, 252);
+        contentFrame.Controls.Add(_contentHost);
+        shell.Controls.Add(contentFrame, 0, 2);
 
         ConfigureDatabaseGrid();
         ShowPage("dashboard");
     }
 
-    private Control BuildSidebar()
+    private Control BuildTopNavigation()
     {
-        var sidebar = new TableLayoutPanel
+        var bar = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            Padding = new Padding(14, 18, 14, 14),
             Margin = Padding.Empty,
-            BackColor = Color.FromArgb(27, 35, 48)
+            Padding = new Padding(24, 14, 24, 12),
+            BackColor = Color.White
         };
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.White
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
 
         var brand = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
-            Margin = Padding.Empty
+            Margin = Padding.Empty,
+            BackColor = Color.White
         };
-        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
-        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
         brand.Controls.Add(new Label
         {
             Text = "OdinVault",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.BottomRight,
-            ForeColor = Color.White,
-            Font = new Font(Font.FontFamily, 16F, FontStyle.Bold)
+            TextAlign = ContentAlignment.BottomLeft,
+            ForeColor = Color.FromArgb(15, 23, 42),
+            Font = new Font(Font.FontFamily, 16.5F, FontStyle.Bold),
+            RightToLeft = RightToLeft.No
         }, 0, 0);
         brand.Controls.Add(new Label
         {
-            Text = "Backup Management",
+            Text = "Backup Control Center",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.TopRight,
-            ForeColor = Color.FromArgb(150, 165, 185),
-            Font = new Font(Font.FontFamily, 9F)
+            TextAlign = ContentAlignment.TopLeft,
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Font = new Font(Font.FontFamily, 8.5F),
+            RightToLeft = RightToLeft.No
         }, 0, 1);
-        sidebar.Controls.Add(brand, 0, 0);
+        layout.Controls.Add(brand, 0, 0);
 
         var navigation = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
+            FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             AutoScroll = true,
-            Margin = new Padding(0, 12, 0, 0),
-            Padding = Padding.Empty
+            Margin = Padding.Empty,
+            Padding = new Padding(4, 4, 4, 0),
+            BackColor = Color.White
         };
 
-        AddNavigationButton(navigation, "dashboard", "▦  داشبورد");
-        AddNavigationButton(navigation, "databases", "▤  دیتابیس‌ها");
-        AddNavigationButton(navigation, "backups", "◷  بکاپ‌ها");
-        AddNavigationButton(navigation, "storage", "▰  ذخیره‌سازی");
-        AddNavigationButton(navigation, "restore", "↶  بازیابی");
-        AddNavigationButton(navigation, "alerts", "●  هشدارها");
-        AddNavigationButton(navigation, "reports", "▥  گزارش‌ها");
-        AddNavigationButton(navigation, "settings", "⚙  تنظیمات");
-        sidebar.Controls.Add(navigation, 0, 1);
+        AddNavigationButton(navigation, "dashboard", "داشبورد", 100);
+        AddNavigationButton(navigation, "databases", "دیتابیس‌ها", 112);
+        AddNavigationButton(navigation, "backups", "بکاپ‌ها", 96);
+        AddNavigationButton(navigation, "storage", "ذخیره‌سازی", 112);
+        AddNavigationButton(navigation, "restore", "بازیابی", 96);
+        AddNavigationButton(navigation, "alerts", "هشدارها", 96);
+        AddNavigationButton(navigation, "reports", "گزارش‌ها", 96);
+        AddNavigationButton(navigation, "settings", "تنظیمات", 96);
+        layout.Controls.Add(navigation, 1, 0);
 
-        var footer = new Panel
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 8, 0, 0),
-            BackColor = Color.FromArgb(34, 44, 60)
-        };
         _sidebarAgentStatus.Text = "● Agent در حال بررسی\r\nlocalhost:5188";
         _sidebarAgentStatus.Dock = DockStyle.Fill;
-        _sidebarAgentStatus.Padding = new Padding(10, 8, 10, 8);
+        _sidebarAgentStatus.Padding = new Padding(8, 4, 8, 4);
         _sidebarAgentStatus.TextAlign = ContentAlignment.MiddleRight;
-        _sidebarAgentStatus.ForeColor = Color.FromArgb(190, 205, 220);
+        _sidebarAgentStatus.ForeColor = Color.FromArgb(71, 85, 105);
         _sidebarAgentStatus.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
-        footer.Controls.Add(_sidebarAgentStatus);
-        sidebar.Controls.Add(footer, 0, 2);
+        layout.Controls.Add(_sidebarAgentStatus, 2, 0);
 
-        return sidebar;
+        bar.Controls.Add(layout);
+        return bar;
     }
 
-    private void AddNavigationButton(FlowLayoutPanel host, string key, string text)
+    private void AddNavigationButton(
+        FlowLayoutPanel host,
+        string key,
+        string text,
+        int width)
     {
-        var button = new Button
+        var button = new ReaLTaiizor.Controls.HopeButton
         {
             Text = text,
-            Width = 198,
-            Height = 46,
-            FlatStyle = FlatStyle.Flat,
-            TextAlign = ContentAlignment.MiddleRight,
-            Padding = new Padding(14, 0, 14, 0),
-            Margin = new Padding(0, 0, 0, 6),
-            BackColor = Color.FromArgb(27, 35, 48),
-            ForeColor = Color.FromArgb(218, 225, 235),
+            Width = width,
+            Height = 42,
+            Margin = new Padding(3, 0, 3, 0),
+            Font = new Font(Font.FontFamily, 9.2F, FontStyle.Bold),
+            ButtonType = ReaLTaiizor.Util.HopeButtonType.Default,
+            DefaultColor = Color.White,
+            PrimaryColor = Color.FromArgb(37, 99, 235),
+            TextColor = Color.FromArgb(71, 85, 105),
+            HoverTextColor = Color.FromArgb(37, 99, 235),
+            BorderColor = Color.FromArgb(226, 232, 240),
             Cursor = Cursors.Hand
         };
-        button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(41, 53, 71);
+
         button.Click += (_, _) => ShowPage(key);
         _navigationButtons[key] = button;
         host.Controls.Add(button);
@@ -335,10 +349,16 @@ internal sealed class MainForm : Form
         foreach (var item in _navigationButtons)
         {
             var active = string.Equals(item.Key, key, StringComparison.Ordinal);
-            item.Value.BackColor = active
-                ? Color.FromArgb(47, 62, 83)
-                : Color.FromArgb(27, 35, 48);
-            item.Value.ForeColor = active ? Color.White : Color.FromArgb(218, 225, 235);
+            item.Value.ButtonType = active
+                ? ReaLTaiizor.Util.HopeButtonType.Primary
+                : ReaLTaiizor.Util.HopeButtonType.Default;
+            item.Value.TextColor = active
+                ? Color.White
+                : Color.FromArgb(71, 85, 105);
+            item.Value.HoverTextColor = active
+                ? Color.White
+                : Color.FromArgb(37, 99, 235);
+            item.Value.Invalidate();
         }
 
         _contentHost.SuspendLayout();
@@ -1740,8 +1760,8 @@ internal sealed class MainForm : Form
             return;
 
         button.Text = unreadCount > 0
-            ? $"●  هشدارها  ({unreadCount})"
-            : "●  هشدارها";
+            ? $"هشدارها ({unreadCount})"
+            : "هشدارها";
     }
 
     private static string FormatAlertSeverity(string severity) =>
