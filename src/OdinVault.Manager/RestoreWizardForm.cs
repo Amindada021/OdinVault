@@ -165,6 +165,8 @@ internal sealed class RestoreWizardForm : Form
                 MessageBoxIcon.Information);
         };
         Shown += async (_, _) => await LoadBackupsAsync();
+    
+        UiLayout.Apply(this);
     }
 
     private async Task LoadBackupsAsync()
