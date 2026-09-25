@@ -47,7 +47,7 @@ public static class DatabaseIdentity
             }
         }
 
-        if (normalizedPort is null && !normalizedHost.Contains('\'))
+        if (normalizedPort is null && !normalizedHost.Contains('\\'))
             normalizedPort = 1433;
 
         return (normalizedHost, normalizedPort);
