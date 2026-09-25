@@ -33,7 +33,7 @@ public sealed class DurableBackupJobs : Migration
                 table.PrimaryKey("PK_BackupJobs", x => x.Id);
                 table.CheckConstraint(
                     "CK_BackupJobs_Percent",
-                    ""Percent" IS NULL OR ("Percent" >= 0 AND "Percent" <= 100)");
+                    "\"Percent\" IS NULL OR (\"Percent\" >= 0 AND \"Percent\" <= 100)");
                 table.ForeignKey(
                     name: "FK_BackupJobs_BackupRecords_BackupRecordId",
                     column: x => x.BackupRecordId,
@@ -69,7 +69,7 @@ public sealed class DurableBackupJobs : Migration
             table: "BackupJobs",
             column: "DatabaseEndpointId",
             unique: true,
-            filter: ""Status" IN (0, 1)");
+            filter: "\"Status\" IN (0, 1)");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
