@@ -97,14 +97,14 @@ internal sealed class MainForm : Form
         ConfigureButton(_addButton, "افزودن دستی", async (_, _) => await AddDatabaseAsync());
         ConfigureButton(_discoverButton, "شناسایی دیتابیس‌های سرور", async (_, _) => await DiscoverDatabasesAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
-        ConfigureButton(_backupButton, "بکاپ الان", async (_, _) => await BackupSelectedAsync());
+        ConfigureButton(_backupButton, "بکاپ انتخاب‌شده‌ها", async (_, _) => await BackupSelectedAsync());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
         actions.Controls.AddRange([_backupButton, _testButton, _discoverButton, _addButton, _refreshButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
-        _grid.ReadOnly = true;
+        _grid.ReadOnly = false;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
         _grid.AllowUserToResizeRows = false;
@@ -114,7 +114,21 @@ internal sealed class MainForm : Form
         _grid.RowHeadersVisible = false;
         _grid.BackgroundColor = SystemColors.Window;
         _grid.BorderStyle = BorderStyle.FixedSingle;
+        _grid.EditMode = DataGridViewEditMode.EditOnEnter;
+        _grid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_grid.IsCurrentCellDirty && _grid.CurrentCell is DataGridViewCheckBoxCell)
+                _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
 
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            Name = "Selected",
+            HeaderText = "انتخاب",
+            FillWeight = 50,
+            ThreeState = false,
+            ReadOnly = false
+        });
         _grid.Columns.Add("Name", "نام");
         _grid.Columns.Add("Server", "سرور");
         _grid.Columns.Add("Database", "دیتابیس");
@@ -151,6 +165,7 @@ internal sealed class MainForm : Form
             foreach (var db in databases)
             {
                 var rowIndex = _grid.Rows.Add(
+                    false,
                     db.Name,
                     db.Port is > 0 ? $"{db.Host}:{db.Port}" : db.Host,
                     db.DatabaseName,
@@ -160,6 +175,11 @@ internal sealed class MainForm : Form
                     db.IsEnabled ? "بله" : "خیر");
 
                 _grid.Rows[rowIndex].Tag = db.Id;
+                foreach (DataGridViewCell cell in _grid.Rows[rowIndex].Cells)
+                {
+                    if (cell.OwningColumn.Name != "Selected")
+                        cell.ReadOnly = true;
+                }
             }
 
             _lastRefresh.Text = $"آخرین بروزرسانی: {DateTime.Now:HH:mm:ss}";
@@ -318,12 +338,33 @@ internal sealed class MainForm : Form
 
     private async Task BackupSelectedAsync()
     {
-        if (!TryGetSelectedDatabaseId(out var id))
+        _grid.EndEdit();
+
+        var selected = _grid.Rows
+            .Cast<DataGridViewRow>()
+            .Where(r => r.Tag is Guid)
+            .Where(r => Convert.ToBoolean(r.Cells["Selected"].Value ?? false))
+            .Select(r => new
+            {
+                Id = (Guid)r.Tag!,
+                Name = Convert.ToString(r.Cells["Name"].Value) ?? "Database"
+            })
+            .ToList();
+
+        if (selected.Count == 0)
+        {
+            MessageBox.Show(
+                this,
+                "حداقل یک دیتابیس را از ستون «انتخاب» تیک بزنید.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
             return;
+        }
 
         var answer = MessageBox.Show(
             this,
-            "برای دیتابیس انتخاب‌شده همین حالا بکاپ گرفته شود؟",
+            $"برای {selected.Count} دیتابیس انتخاب‌شده همین حالا بکاپ گرفته شود؟",
             "OdinVault",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
@@ -332,23 +373,43 @@ internal sealed class MainForm : Form
             return;
 
         SetBusy(true);
+        var succeeded = 0;
+        var errors = new List<string>();
+
         try
         {
-            await _api.RunBackupAsync(id);
+            foreach (var db in selected)
+            {
+                try
+                {
+                    _backupButton.Text = $"در حال بکاپ {succeeded + errors.Count + 1} از {selected.Count}";
+                    await _api.RunBackupAsync(db.Id);
+                    succeeded++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{db.Name}: {ex.Message}");
+                }
+            }
+
+            var message = $"{succeeded} بکاپ با موفقیت انجام شد.";
+            if (errors.Count > 0)
+                message += Environment.NewLine + Environment.NewLine +
+                           "خطاها:" + Environment.NewLine +
+                           string.Join(Environment.NewLine, errors);
+
             MessageBox.Show(
                 this,
-                "بکاپ با موفقیت انجام شد.",
+                message,
                 "OdinVault",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                errors.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
             await RefreshAllAsync();
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
         }
         finally
         {
+            _backupButton.Text = "بکاپ انتخاب‌شده‌ها";
             SetBusy(false);
         }
     }
