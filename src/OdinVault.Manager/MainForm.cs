@@ -48,6 +48,7 @@ internal sealed class MainForm : Form
     private Control? _alertsPage;
     private Control? _reportsPage;
     private Control? _settingsPage;
+    private Control? _aboutPage;
     private Guid? _currentDetailsDatabaseId;
     private readonly CheckBox _settingStartMinimized = new();
     private readonly CheckBox _settingMinimizeToTray = new();
@@ -252,7 +253,7 @@ internal sealed class MainForm : Form
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 185));
 
         var brand = new TableLayoutPanel
         {
@@ -303,13 +304,15 @@ internal sealed class MainForm : Form
         AddNavigationButton(navigation, "alerts", "هشدارها", 96);
         AddNavigationButton(navigation, "reports", "گزارش‌ها", 96);
         AddNavigationButton(navigation, "settings", "تنظیمات", 96);
+        AddNavigationButton(navigation, "about", "ⓘ درباره", 92);
         layout.Controls.Add(navigation, 1, 0);
 
-        _sidebarAgentStatus.Text = "● Agent در حال بررسی\r\nlocalhost:5188";
+        _sidebarAgentStatus.Text = "● Agent در حال بررسی";
         _sidebarAgentStatus.Dock = DockStyle.Fill;
-        _sidebarAgentStatus.Padding = new Padding(8, 4, 8, 4);
-        _sidebarAgentStatus.TextAlign = ContentAlignment.MiddleRight;
-        _sidebarAgentStatus.ForeColor = Color.FromArgb(71, 85, 105);
+        _sidebarAgentStatus.Padding = new Padding(10, 4, 10, 4);
+        _sidebarAgentStatus.TextAlign = ContentAlignment.MiddleCenter;
+        _sidebarAgentStatus.ForeColor = Color.FromArgb(22, 163, 74);
+        _sidebarAgentStatus.BackColor = Color.FromArgb(240, 253, 244);
         _sidebarAgentStatus.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
         layout.Controls.Add(_sidebarAgentStatus, 2, 0);
 
@@ -407,6 +410,11 @@ internal sealed class MainForm : Form
                     _contentHost.Controls.Add(_reportsPage);
                     _ = RefreshReportsPageAsync();
                     break;
+                case "about":
+                    _pageTitle.Text = "درباره OdinVault";
+                    _aboutPage ??= BuildAboutPage();
+                    _contentHost.Controls.Add(_aboutPage);
+                    break;
                 default:
                     _pageTitle.Text = "تنظیمات";
                     _settingsPage ??= BuildSettingsPage();
@@ -431,11 +439,11 @@ internal sealed class MainForm : Form
             RowCount = 3,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(245, 247, 250)
+            BackColor = Color.FromArgb(246, 248, 252)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 330));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var kpis = new TableLayoutPanel
         {
@@ -459,9 +467,9 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
-            Margin = new Padding(0, 0, 0, 16),
+            Margin = new Padding(0, 0, 0, 18),
             Padding = Padding.Empty,
-            BackColor = Color.FromArgb(245, 247, 250)
+            BackColor = Color.FromArgb(246, 248, 252)
         };
         chartsContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         chartsContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -501,19 +509,18 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 2,
+            RowCount = 1,
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        charts.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        charts.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        charts.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
+        _backupSizeChart.Dock = DockStyle.Fill;
+        _backupStatusChart.Dock = DockStyle.Fill;
         charts.Controls.Add(_backupSizeChart, 0, 0);
         charts.Controls.Add(_backupStatusChart, 1, 0);
-        charts.Controls.Add(_backupDurationChart, 0, 1);
-        charts.Controls.Add(_databaseSizeChart, 1, 1);
         chartsContainer.Controls.Add(charts, 0, 1);
         root.Controls.Add(chartsContainer, 0, 1);
 
@@ -551,10 +558,14 @@ internal sealed class MainForm : Form
 
     private void ConfigureCharts()
     {
-        _backupSizeChart.MinimumSize = new Size(0, 150);
-        _backupStatusChart.MinimumSize = new Size(0, 150);
-        _backupDurationChart.MinimumSize = new Size(0, 150);
-        _databaseSizeChart.MinimumSize = new Size(0, 150);
+        _backupSizeChart.MinimumSize = new Size(0, 180);
+        _backupStatusChart.MinimumSize = new Size(0, 180);
+        _backupDurationChart.MinimumSize = new Size(0, 180);
+        _databaseSizeChart.MinimumSize = new Size(0, 180);
+        _backupSizeChart.Dock = DockStyle.Fill;
+        _backupStatusChart.Dock = DockStyle.Fill;
+        _backupDurationChart.Dock = DockStyle.Fill;
+        _databaseSizeChart.Dock = DockStyle.Fill;
 
         _backupSizeChart.ChartTitle = "روند حجم بکاپ‌های موفق";
         _backupSizeChart.Kind = BackupChartKind.Line;
@@ -1832,10 +1843,10 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 54));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 158));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 280));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var toolbar = new FlowLayoutPanel
         {
@@ -1846,10 +1857,10 @@ internal sealed class MainForm : Form
             Padding = new Padding(4)
         };
 
-        var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 36 };
+        var refresh = CreateToolbarButton("بروزرسانی");
         refresh.Click += async (_, _) => await RefreshReportsPageAsync();
 
-        var export = new Button { Text = "خروجی CSV برای Excel", AutoSize = true, Height = 42, Padding = new Padding(12, 3, 12, 3) };
+        var export = CreateToolbarButton("خروجی CSV برای Excel", primary: true);
         export.Click += (_, _) => ExportBackupReportCsv();
 
         _reportRange.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -1892,6 +1903,8 @@ internal sealed class MainForm : Form
 
         _reportStatusChart.MinimumSize = new Size(0, 190);
         _reportSizeChart.MinimumSize = new Size(0, 190);
+        _reportStatusChart.Dock = DockStyle.Fill;
+        _reportSizeChart.Dock = DockStyle.Fill;
 
         _reportStatusChart.ChartTitle = "روند موفق / ناموفق / Verify ناموفق";
         _reportStatusChart.Kind = BackupChartKind.Bar;
@@ -2868,15 +2881,20 @@ internal sealed class MainForm : Form
 
                 _sidebarAgentStatus.Text = agentHealthy
                     ? protectionHealthy
-                        ? "● Agent Online\r\nحفاظت سالم"
-                        : "● Agent Online\r\nنیاز به بررسی"
-                    : "● Agent Offline\r\nlocalhost:5188";
+                        ? "● Agent Online"
+                        : "▲ Agent Attention"
+                    : "● Agent Offline";
 
                 _sidebarAgentStatus.ForeColor = !agentHealthy
-                    ? Color.FromArgb(245, 135, 135)
+                    ? Color.FromArgb(185, 28, 28)
                     : protectionHealthy
-                        ? Color.FromArgb(125, 225, 170)
-                        : Color.FromArgb(245, 195, 105);
+                        ? Color.FromArgb(22, 163, 74)
+                        : Color.FromArgb(180, 83, 9);
+                _sidebarAgentStatus.BackColor = !agentHealthy
+                    ? Color.FromArgb(254, 242, 242)
+                    : protectionHealthy
+                        ? Color.FromArgb(240, 253, 244)
+                        : Color.FromArgb(255, 251, 235);
 
                 _trayIcon.Text = agentHealthy
                     ? protectionHealthy
@@ -2931,7 +2949,7 @@ internal sealed class MainForm : Form
         {
             _agentStatus.Text = "● Agent در دسترس نیست";
             _agentStatus.ForeColor = Color.FromArgb(190, 65, 65);
-            _sidebarAgentStatus.Text = "● Agent Offline\r\nlocalhost:5188";
+            _sidebarAgentStatus.Text = "● Agent Offline";
             _sidebarAgentStatus.ForeColor = Color.FromArgb(245, 135, 135);
             _trayIcon.Text = "OdinVault • Agent Offline";
 
