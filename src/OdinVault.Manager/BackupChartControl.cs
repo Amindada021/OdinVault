@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
 namespace OdinVault.Manager;
@@ -34,9 +35,20 @@ internal sealed class BackupChartControl : Control
         Font = new Font("Segoe UI", 9F);
     }
 
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string ChartTitle { get; set; } = string.Empty;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string EmptyText { get; set; } = "داده‌ای برای نمایش وجود ندارد.";
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public BackupChartKind Kind { get; set; } = BackupChartKind.Line;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<double, string>? ValueFormatter { get; set; }
 
     public void SetData(
