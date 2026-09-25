@@ -77,21 +77,38 @@ public sealed class AgentHealthService(
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
 
-            var protectedDatabaseIds = await db.BackupRecords
+            var locallyProtectedDatabaseIds = await db.BackupRecords
                 .AsNoTracking()
                 .Where(x => enabledDatabaseIds.Contains(x.DatabaseEndpointId) &&
                             x.Status == BackupStatus.Succeeded &&
-                            (x.LocalFileAvailable ||
-                             db.BackupReplicas.Any(replica =>
-                                 replica.BackupRecordId == x.Id &&
-                                 replica.Status == ReplicaStatus.Succeeded)))
+                            x.LocalFileAvailable)
                 .Select(x => x.DatabaseEndpointId)
                 .Distinct()
                 .ToListAsync(cancellationToken);
 
+            var replicaProtectedDatabaseIds = await (
+                from backup in db.BackupRecords.AsNoTracking()
+                join replica in db.BackupReplicas.AsNoTracking()
+                    on backup.Id equals replica.BackupRecordId
+                join target in db.StorageTargets.AsNoTracking()
+                    on replica.StorageTargetId equals target.Id
+                where enabledDatabaseIds.Contains(backup.DatabaseEndpointId) &&
+                      backup.Status == BackupStatus.Succeeded &&
+                      replica.Status == ReplicaStatus.Succeeded &&
+                      (target.Type != StorageProviderType.OdinVaultReplica ||
+                       (replica.ContentHashSha256 != null &&
+                        replica.ContentHashSha256.Length == 64))
+                select backup.DatabaseEndpointId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            var protectedDatabaseIds = locallyProtectedDatabaseIds
+                .Concat(replicaProtectedDatabaseIds)
+                .Distinct()
+                .ToHashSet();
+
             var databasesWithoutSuccessfulBackup = enabledDatabaseIds
-                .Except(protectedDatabaseIds)
-                .Count();
+                .Count(x => !protectedDatabaseIds.Contains(x));
 
             var storageFreeBytes = TryGetAvailableFreeSpace(paths.StorageDirectory);
             var replicaFreeBytes = TryGetAvailableFreeSpace(paths.ReplicaDirectory);
