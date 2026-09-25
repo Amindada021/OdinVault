@@ -90,8 +90,9 @@ internal sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
         MinimizeBox = true;
-        MinimumSize = new Size(1100, 700);
-        Size = new Size(1360, 840);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        MinimumSize = new Size(1180, 760);
+        Size = new Size(1440, 900);
         Font = new Font("Segoe UI", 10F);
         RightToLeft = RightToLeft.Yes;
         RightToLeftLayout = true;
@@ -164,10 +165,10 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(24, 18, 24, 24),
+            Padding = new Padding(28, 22, 28, 28),
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.Controls.Add(main, 0, 0);
 
@@ -265,7 +266,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopRight,
             ForeColor = Color.FromArgb(150, 165, 185),
-            Font = new Font(Font.FontFamily, 8.5F)
+            Font = new Font(Font.FontFamily, 9F)
         }, 0, 1);
         sidebar.Controls.Add(brand, 0, 0);
 
@@ -412,8 +413,8 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 400));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var kpis = new TableLayoutPanel
@@ -421,7 +422,7 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 4,
             RowCount = 1,
-            Margin = new Padding(0, 0, 0, 16),
+            Margin = new Padding(0, 0, 0, 20),
             Padding = Padding.Empty
         };
         for (var i = 0; i < 4; i++)
@@ -442,7 +443,7 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        chartsContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        chartsContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         chartsContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var chartToolbar = new FlowLayoutPanel
@@ -640,14 +641,14 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Margin = new Padding(6),
-            Padding = new Padding(16, 12, 16, 12),
+            Margin = new Padding(8),
+            Padding = new Padding(20, 16, 20, 16),
             BackColor = Color.White,
             CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
         };
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
         card.Controls.Add(new Label
         {
@@ -655,13 +656,13 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.FromArgb(95, 105, 120),
-            Font = new Font(Font.FontFamily, 9F, FontStyle.Bold)
+            Font = new Font(Font.FontFamily, 9.5F, FontStyle.Bold)
         }, 0, 0);
 
         value.Text = "—";
         value.Dock = DockStyle.Fill;
         value.TextAlign = ContentAlignment.MiddleRight;
-        value.Font = new Font(Font.FontFamily, 23F, FontStyle.Bold);
+        value.Font = new Font(Font.FontFamily, 27F, FontStyle.Bold);
         value.ForeColor = Color.FromArgb(35, 45, 60);
         card.Controls.Add(value, 0, 1);
 
@@ -970,8 +971,8 @@ internal sealed class MainForm : Form
         grid.BackgroundColor = Color.White;
         grid.BorderStyle = BorderStyle.None;
         grid.EnableHeadersVisualStyles = false;
-        grid.ColumnHeadersHeight = 40;
-        grid.RowTemplate.Height = 34;
+        grid.ColumnHeadersHeight = 46;
+        grid.RowTemplate.Height = 40;
         grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
         grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 80);
         grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 235, 246);
@@ -1185,7 +1186,7 @@ internal sealed class MainForm : Form
             Padding = new Padding(4)
         };
 
-        var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 36 };
+        var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 42, Padding = new Padding(12, 3, 12, 3) };
         refresh.Click += async (_, _) => await RefreshStoragePageAsync();
 
         var test = new Button { Text = "تست اتصال", AutoSize = true, Height = 36 };
@@ -1768,9 +1769,9 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 320));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 176));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var toolbar = new FlowLayoutPanel
@@ -1785,7 +1786,7 @@ internal sealed class MainForm : Form
         var refresh = new Button { Text = "بروزرسانی", AutoSize = true, Height = 36 };
         refresh.Click += async (_, _) => await RefreshReportsPageAsync();
 
-        var export = new Button { Text = "خروجی CSV برای Excel", AutoSize = true, Height = 36 };
+        var export = new Button { Text = "خروجی CSV برای Excel", AutoSize = true, Height = 42, Padding = new Padding(12, 3, 12, 3) };
         export.Click += (_, _) => ExportBackupReportCsv();
 
         _reportRange.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -1814,7 +1815,8 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 4,
             RowCount = 1,
-            Margin = new Padding(0, 0, 0, 14)
+            Margin = new Padding(0, 0, 0, 18),
+            Padding = new Padding(0, 4, 0, 4)
         };
         for (var i = 0; i < 4; i++)
             kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
@@ -2648,14 +2650,14 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty,
             BackColor = Color.FromArgb(245, 247, 250)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 138));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var actionsCard = new Panel
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 0, 0, 14),
-            Padding = new Padding(14, 14, 14, 10),
+            Padding = new Padding(18, 18, 18, 14),
             BackColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle
         };
@@ -2666,6 +2668,7 @@ internal sealed class MainForm : Form
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = true,
             AutoScroll = true,
+            Padding = new Padding(2),
             BackColor = Color.White
         };
 
@@ -2731,8 +2734,8 @@ internal sealed class MainForm : Form
         _grid.BackgroundColor = Color.White;
         _grid.BorderStyle = BorderStyle.None;
         _grid.EditMode = DataGridViewEditMode.EditOnEnter;
-        _grid.ColumnHeadersHeight = 42;
-        _grid.RowTemplate.Height = 38;
+        _grid.ColumnHeadersHeight = 48;
+        _grid.RowTemplate.Height = 44;
         _grid.EnableHeadersVisualStyles = false;
         _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
         _grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(55, 65, 80);
@@ -2776,8 +2779,9 @@ internal sealed class MainForm : Form
     {
         button.Text = text;
         button.AutoSize = true;
-        button.Height = 36;
-        button.Padding = new Padding(12, 2, 12, 2);
+        button.Height = 42;
+        button.MinimumSize = new Size(0, 42);
+        button.Padding = new Padding(14, 4, 14, 4);
         button.FlatStyle = FlatStyle.System;
         button.Click -= handler;
         button.Click += handler;
