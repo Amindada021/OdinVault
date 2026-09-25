@@ -1,16 +1,34 @@
 using System.Text;
+using Microsoft.AspNetCore.Http.Features;
 using OdinVault.Core;
 
 namespace OdinVault.Agent;
 
 public static class ReplicaEndpoints
 {
-    public static void MapReplicaEndpoints(this WebApplication app, string replicaDirectory)
+    public static void MapReplicaEndpoints(this WebApplication app, ReplicaSettings settings)
     {
-        Directory.CreateDirectory(replicaDirectory);
+        app.MapGet("/api/replica/settings", () => Results.Ok(new { directory = settings.Directory }));
+        app.MapPut("/api/replica/settings", (ReplicaDirectoryRequest request) =>
+        {
+            try { settings.Save(request.Directory); return Results.Ok(new { directory = settings.Directory }); }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            { return Results.BadRequest(new { message = ex.Message }); }
+        });
+        app.MapGet("/api/replica/received", () =>
+        {
+            var root = settings.Directory;
+            var files = Directory.EnumerateFiles(root, "*.bak", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint })
+                .Select(x => new FileInfo(x)).OrderByDescending(x => x.LastWriteTimeUtc).Take(200)
+                .Select(x => new { fileName = x.Name, relativePath = Path.GetRelativePath(root, x.FullName), sizeBytes = x.Length, receivedAtUtc = x.LastWriteTimeUtc });
+            return Results.Ok(files.ToArray());
+        });
 
         app.MapPost("/api/replica/backups", async (HttpRequest request, CancellationToken ct) =>
         {
+            var limit = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = null;
+            var replicaDirectory = settings.Directory;
             var backupId = request.Headers["X-OdinVault-Backup-Id"].ToString();
             var encoded = request.Headers["X-OdinVault-Name-Encoding"] == "uri";
             string Header(string name) => encoded ? Uri.UnescapeDataString(request.Headers[name].ToString()) : request.Headers[name].ToString();
@@ -62,7 +80,7 @@ public static class ReplicaEndpoints
 
         app.MapGet("/api/replica/backups/{id}", (string id) =>
         {
-            var path = ResolveReplicaPath(replicaDirectory, id);
+            var path = ResolveReplicaPath(settings.Directory, id);
             if (path is null) return Results.BadRequest();
             return File.Exists(path)
                 ? Results.File(path, "application/octet-stream", enableRangeProcessing: true)
@@ -71,7 +89,7 @@ public static class ReplicaEndpoints
 
         app.MapDelete("/api/replica/backups/{id}", (string id) =>
         {
-            var path = ResolveReplicaPath(replicaDirectory, id);
+            var path = ResolveReplicaPath(settings.Directory, id);
             if (path is null) return Results.BadRequest();
             if (File.Exists(path)) File.Delete(path);
             return Results.NoContent();

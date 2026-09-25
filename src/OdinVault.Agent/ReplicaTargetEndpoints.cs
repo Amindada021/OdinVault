@@ -36,7 +36,7 @@ public static class ReplicaTargetEndpoints
             if (request.TestConnection)
             {
                 var client = httpClientFactory.CreateClient("OdinVaultReplica");
-                using var health = new HttpRequestMessage(HttpMethod.Get, $"{target.BaseUrl}/api/health");
+                using var health = new HttpRequestMessage(HttpMethod.Get, $"{target.BaseUrl}/api/databases");
                 health.Headers.TryAddWithoutValidation("X-OdinVault-Key", request.ApiKey);
                 using var response = await client.SendAsync(health, ct);
                 if (!response.IsSuccessStatusCode)
@@ -60,7 +60,7 @@ public static class ReplicaTargetEndpoints
 
             var apiKey = protector.Unprotect(target.ProtectedApiKey);
             var client = httpClientFactory.CreateClient("OdinVaultReplica");
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{target.BaseUrl.TrimEnd('/')}/api/health");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{target.BaseUrl.TrimEnd('/')}/api/databases");
             request.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
             using var response = await client.SendAsync(request, ct);
             return Results.Ok(new { success = response.IsSuccessStatusCode, statusCode = (int)response.StatusCode });

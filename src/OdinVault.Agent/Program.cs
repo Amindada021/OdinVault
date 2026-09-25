@@ -41,6 +41,7 @@ var googleDriveOptions = new GoogleDriveOAuthOptions(
     builder.Configuration["OdinVault:GoogleDrive:ClientSecret"] ?? Environment.GetEnvironmentVariable("ODINVAULT_GOOGLE_CLIENT_SECRET") ?? string.Empty);
 
 builder.Services.AddSingleton(agentApiKey);
+builder.Services.AddSingleton(new ReplicaSettings(dataDirectory, replicaDirectory));
 builder.Services.AddSingleton(googleDriveOptions);
 builder.Services.AddSingleton<GoogleDriveOAuthService>();
 builder.Services.AddSingleton<GoogleDrivePairingStateStore>();
@@ -327,7 +328,7 @@ app.MapGet("/api/backups/{id:guid}/download", async (Guid id, OdinVaultDbContext
 app.MapBackupJobs();
 app.MapStorageEndpoints();
 app.MapReplicaTargetEndpoints();
-app.MapReplicaEndpoints(replicaDirectory);
+app.MapReplicaEndpoints(app.Services.GetRequiredService<ReplicaSettings>());
 app.Run();
 
 static object ToDatabaseResponse(DatabaseEndpoint endpoint, BackupPolicy? policy) => new

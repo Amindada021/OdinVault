@@ -51,7 +51,7 @@ internal sealed class MainForm : Form
             Padding = new Padding(18)
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -93,7 +93,8 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false
+            WrapContents = true,
+            AutoScroll = true
         };
 
         ConfigureButton(_refreshButton, "بروزرسانی", async (_, _) => await RefreshAllAsync());
@@ -106,6 +107,13 @@ internal sealed class MainForm : Form
         ConfigureButton(_mobileConnectionButton, "اتصال موبایل", (_, _) => ShowMobileConnection());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
+        var storageButton = new Button();
+        ConfigureButton(storageButton, "پشتیبان و محل دریافت", (_, _) =>
+        {
+            using var dialog = new ReplicaSetupForm(_api);
+            dialog.ShowDialog(this);
+        });
+        actions.Controls.Add(storageButton);
         actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _mobileConnectionButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
@@ -140,7 +148,7 @@ internal sealed class MainForm : Form
         _grid.Columns.Add("Database", "دیتابیس");
         _grid.Columns.Add("Schedule", "زمان‌بندی");
         _grid.Columns.Add("Retention", "نگهداری");
-        _grid.Columns.Add("Verify", "Verify");
+        _grid.Columns.Add("بررسی سلامت", "بررسی سلامت");
         _grid.Columns.Add("Enabled", "فعال");
 
         root.Controls.Add(_grid, 0, 2);
@@ -491,7 +499,7 @@ internal sealed class MainForm : Form
                 try
                 {
                     _backupButton.Text = $"در حال بکاپ {succeeded + errors.Count + 1} از {selected.Count}";
-                    await _api.RunBackupAsync(db.Id);
+                    await _api.RunBackupAsync(db.Id, progress: new Progress<string>(text => { if (!IsDisposed) _agentStatus.Text = $"{db.Name}: {text}"; }));
                     succeeded++;
                 }
                 catch (Exception ex)

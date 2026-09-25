@@ -93,11 +93,35 @@ internal sealed class AgentApiClient : IDisposable
         await EnsureSuccessAsync(response, cancellationToken);
     }
 
-    public async Task RunBackupAsync(Guid databaseId, CancellationToken cancellationToken = default)
+    public async Task RunBackupAsync(Guid databaseId, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
     {
-        using var request = CreateAuthorizedRequest(HttpMethod.Post, $"api/databases/{databaseId}/backups");
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
+        var job = await SendAsync<BackupJobResponse>(HttpMethod.Post, $"api/databases/{databaseId}/backup-jobs", null, cancellationToken);
+        while (true)
+        {
+            var status = job.Stage switch
+            {
+                "queued" => "در صف بکاپ",
+                "backup" => $"ساخت بکاپ {job.Percent?.ToString() ?? "…"}٪",
+                "verify" => "بررسی سلامت فایل",
+                "replicating" => "بکاپ آماده است؛ ارسال به پشتیبان",
+                _ => "در حال انجام"
+            };
+            progress?.Report(status);
+            if (job.Backup is not null) return;
+            if (job.Stage == "failed") throw new InvalidOperationException(job.Error);
+            await Task.Delay(1500, cancellationToken);
+            job = await SendAsync<BackupJobResponse>(HttpMethod.Get, $"api/backup-jobs/{job.Id}", null, cancellationToken);
+        }
+    }
+
+    public async Task<T> SendAsync<T>(HttpMethod method, string url, object? body = null, CancellationToken ct = default)
+    {
+        using var request = CreateAuthorizedRequest(method, url);
+        if (body is not null) request.Content = JsonContent.Create(body, options: JsonOptions);
+        using var response = await _httpClient.SendAsync(request, ct);
+        await EnsureSuccessAsync(response, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent) return default!;
+        return (await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct))!;
     }
 
     public async Task<DatabaseResponse?> CreateDatabaseAsync(CreateDatabaseRequest body, CancellationToken cancellationToken = default)
@@ -281,3 +305,8 @@ internal sealed record UpdateBackupPolicyRequest(
     bool IsEnabled);
 
 internal sealed record ErrorResponse(string? Message);
+
+internal sealed record BackupJobResponse(Guid Id, string Stage, int? Percent, JsonElement? Backup, string? Error);
+internal sealed record ReplicaSettingsResponse(string Directory);
+internal sealed record ReplicaTargetResponse(Guid Id, string Name, int Type, bool IsEnabled);
+internal sealed record ReceivedBackupResponse(string FileName, string RelativePath, long SizeBytes, DateTime ReceivedAtUtc);
