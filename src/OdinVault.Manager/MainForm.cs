@@ -2285,47 +2285,37 @@ internal sealed class MainForm : Form
 
         _settingMobileUrl.Dock = DockStyle.Top;
         _settingMobileUrl.RightToLeft = RightToLeft.No;
+        _settingMobileUrl.ReadOnly = true;
+        _settingMobileUrl.BackColor = Color.White;
         panel.Controls.Add(_settingMobileUrl, 0, 2);
 
-        var saveMobile = new Button
+        var editEndpoint = new Button
         {
-            Text = "ذخیره آدرس موبایل",
+            Text = "تنظیم Base / Port و تست اتصال",
             AutoSize = true,
-            Height = 36,
+            Height = 38,
             Margin = new Padding(6, 12, 6, 6)
         };
-        saveMobile.Click += (_, _) =>
+        editEndpoint.Click += (_, _) =>
         {
-            try
-            {
-                _api.SaveMobileBaseUrl(_settingMobileUrl.Text);
-                MessageBox.Show(
-                    this,
-                    "آدرس اتصال موبایل ذخیره شد.",
-                    "OdinVault",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                ShowError(ex);
-            }
+            ShowMobileConnection();
+            _settingMobileUrl.Text = _api.GetMobileBaseUrl();
         };
-        panel.Controls.Add(saveMobile, 0, 3);
+        panel.Controls.Add(editEndpoint, 0, 3);
 
-        var mobile = new Button
+        var copyInfo = new Button
         {
-            Text = "نمایش اطلاعات اتصال موبایل",
+            Text = "نمایش و کپی اطلاعات اتصال موبایل",
             AutoSize = true,
             Height = 36,
             Margin = new Padding(6)
         };
-        mobile.Click += (_, _) => ShowMobileConnection();
-        panel.Controls.Add(mobile, 0, 4);
+        copyInfo.Click += (_, _) => ShowMobileConnection();
+        panel.Controls.Add(copyInfo, 0, 4);
 
         panel.Controls.Add(new Label
         {
-            Text = "کلید Agent در UI نمایش داده نمی‌شود و از مسیر امن فعلی Manager خوانده می‌شود.",
+            Text = "برای IP مستقیم، Base و Port را جدا وارد کنید. برای دامنه HTTPS می‌توانید Port را خالی بگذارید.",
             AutoSize = true,
             MaximumSize = new Size(430, 0),
             ForeColor = Color.FromArgb(105, 115, 130),
@@ -4019,9 +4009,13 @@ internal sealed class AddDatabaseForm : Form
 internal sealed class MobileConnectionForm : Form
 {
     private readonly AgentApiClient _api;
-    private readonly TextBox _baseUrl = new();
+    private readonly ComboBox _scheme = new();
+    private readonly TextBox _host = new();
+    private readonly TextBox _port = new();
     private readonly TextBox _apiKey = new() { ReadOnly = true, UseSystemPasswordChar = true };
     private readonly CheckBox _showKey = new() { Text = "نمایش کلید", AutoSize = true };
+    private readonly Label _preview = new();
+    private readonly Label _probeStatus = new();
 
     public MobileConnectionForm(AgentApiClient api)
     {
@@ -4032,15 +4026,40 @@ internal sealed class MobileConnectionForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(650, 330);
+        ClientSize = new Size(720, 470);
         Font = new Font("Segoe UI", 10F);
         RightToLeft = RightToLeft.Yes;
         RightToLeftLayout = true;
 
-        _baseUrl.Text = _api.GetMobileBaseUrl();
+        _scheme.Items.AddRange(["http", "https"]);
+        LoadCurrentEndpoint();
         _apiKey.Text = _api.GetApiKey();
 
         BuildUi();
+        UpdatePreview();
+    }
+
+    private void LoadCurrentEndpoint()
+    {
+        var current = _api.GetMobileBaseUrl();
+        if (!Uri.TryCreate(current, UriKind.Absolute, out var uri))
+        {
+            _scheme.SelectedIndex = 0;
+            _host.Text = Environment.MachineName;
+            _port.Text = "5188";
+            return;
+        }
+
+        _scheme.SelectedItem = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)
+            ? "https"
+            : "http";
+        _host.Text = uri.Host;
+
+        var explicitPort =
+            !uri.IsDefaultPort ||
+            current.Contains($":{uri.Port}", StringComparison.OrdinalIgnoreCase);
+
+        _port.Text = explicitPort ? uri.Port.ToString() : string.Empty;
     }
 
     private void BuildUi()
@@ -4048,61 +4067,133 @@ internal sealed class MobileConnectionForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(18),
+            Padding = new Padding(20),
             ColumnCount = 1,
-            RowCount = 6
+            RowCount = 8
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
 
-        var title = new Label
+        root.Controls.Add(new Label
         {
-            Text = "اطلاعات کامل اتصال اپ موبایل",
-            Font = new Font(Font.FontFamily, 13F, FontStyle.Bold),
+            Text = "اتصال موبایل به OdinVault Agent",
+            Font = new Font(Font.FontFamily, 14F, FontStyle.Bold),
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight
-        };
-        root.Controls.Add(title, 0, 0);
+        }, 0, 0);
 
-        var urlPanel = new TableLayoutPanel
+        var endpoint = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 6,
+            RowCount = 2
+        };
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
+        endpoint.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+        endpoint.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        endpoint.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        endpoint.Controls.Add(Caption("Protocol"), 0, 0);
+        endpoint.Controls.Add(Caption("Base / Host"), 2, 0);
+        endpoint.Controls.Add(Caption("Port"), 4, 0);
+
+        _scheme.Dock = DockStyle.Fill;
+        _scheme.DropDownStyle = ComboBoxStyle.DropDownList;
+        _scheme.RightToLeft = RightToLeft.No;
+        _scheme.SelectedIndexChanged += (_, _) => UpdatePreview();
+        endpoint.Controls.Add(_scheme, 1, 0);
+
+        _host.Dock = DockStyle.Fill;
+        _host.RightToLeft = RightToLeft.No;
+        _host.PlaceholderText = "188.213.65.140 یا vault.example.com";
+        _host.TextChanged += (_, _) => UpdatePreview();
+        endpoint.Controls.Add(_host, 3, 0);
+
+        _port.Dock = DockStyle.Fill;
+        _port.RightToLeft = RightToLeft.No;
+        _port.PlaceholderText = "5188";
+        _port.TextChanged += (_, _) => UpdatePreview();
+        endpoint.Controls.Add(_port, 5, 0);
+
+        var portNote = new Label
+        {
+            Text = "Port اختیاری است؛ برای دامنه HTTPS می‌توانید خالی بگذارید.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(100, 116, 139)
+        };
+        endpoint.Controls.Add(portNote, 0, 1);
+        endpoint.SetColumnSpan(portNote, 6);
+        root.Controls.Add(endpoint, 0, 1);
+
+        var previewPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2
         };
-        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
-        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        urlPanel.Controls.Add(new Label
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        previewPanel.Controls.Add(Caption("URL نهایی"), 0, 0);
+
+        _preview.Dock = DockStyle.Fill;
+        _preview.TextAlign = ContentAlignment.MiddleLeft;
+        _preview.RightToLeft = RightToLeft.No;
+        _preview.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
+        _preview.ForeColor = Color.FromArgb(37, 99, 235);
+        previewPanel.Controls.Add(_preview, 1, 0);
+        root.Controls.Add(previewPanel, 0, 2);
+
+        var probes = new FlowLayoutPanel
         {
-            Text = "آدرس Agent / دامنه",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight
-        }, 0, 0);
-        _baseUrl.Dock = DockStyle.Fill;
-        _baseUrl.RightToLeft = RightToLeft.No;
-        urlPanel.Controls.Add(_baseUrl, 1, 0);
-        root.Controls.Add(urlPanel, 0, 1);
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false
+        };
+
+        var testPort = new Button
+        {
+            Text = "بررسی باز بودن Port",
+            AutoSize = true,
+            Height = 38
+        };
+        testPort.Click += async (_, _) => await TestPortAsync(testPort);
+
+        var testAgent = new Button
+        {
+            Text = "تست اتصال Agent",
+            AutoSize = true,
+            Height = 38
+        };
+        testAgent.Click += async (_, _) => await TestAgentAsync(testAgent);
+
+        probes.Controls.Add(testAgent);
+        probes.Controls.Add(testPort);
+        root.Controls.Add(probes, 0, 3);
 
         var keyPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3
         };
-        keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         keyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-        keyPanel.Controls.Add(new Label
-        {
-            Text = "API Key",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight
-        }, 0, 0);
+        keyPanel.Controls.Add(Caption("API Key"), 0, 0);
+
         _apiKey.Dock = DockStyle.Fill;
         _apiKey.RightToLeft = RightToLeft.No;
         keyPanel.Controls.Add(_apiKey, 1, 0);
+
         var copyKey = new Button { Text = "کپی کلید", Dock = DockStyle.Fill };
         copyKey.Click += (_, _) =>
         {
@@ -4110,20 +4201,32 @@ internal sealed class MobileConnectionForm : Form
             MessageBox.Show(this, "کلید API کپی شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
         };
         keyPanel.Controls.Add(copyKey, 2, 0);
-        root.Controls.Add(keyPanel, 0, 2);
+        root.Controls.Add(keyPanel, 0, 4);
 
         _showKey.CheckedChanged += (_, _) => _apiKey.UseSystemPasswordChar = !_showKey.Checked;
-        root.Controls.Add(_showKey, 0, 3);
+        root.Controls.Add(_showKey, 0, 5);
 
-        var note = new Label
+        var statusPanel = new TableLayoutPanel
         {
-            Text = "اگر از دامنه یا Reverse Proxy استفاده می‌کنید، آدرس HTTPS را اینجا وارد و ذخیره کنید. " +
-                   "برای شبکه داخلی می‌توانید IP یا نام این سرور را همراه پورت 5188 وارد کنید.",
-            AutoSize = true,
-            MaximumSize = new Size(600, 0),
-            ForeColor = SystemColors.GrayText
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2
         };
-        root.Controls.Add(note, 0, 4);
+
+        _probeStatus.Dock = DockStyle.Top;
+        _probeStatus.AutoSize = true;
+        _probeStatus.TextAlign = ContentAlignment.MiddleRight;
+        _probeStatus.ForeColor = Color.FromArgb(100, 116, 139);
+        statusPanel.Controls.Add(_probeStatus, 0, 0);
+
+        statusPanel.Controls.Add(new Label
+        {
+            Text = "تست Port اتصال TCP را از همین ویندوز به Host/Port بررسی می‌کند. تست Agent پاسخ واقعی /api/health و API Key را هم بررسی می‌کند.",
+            AutoSize = true,
+            MaximumSize = new Size(660, 0),
+            ForeColor = Color.FromArgb(100, 116, 139)
+        }, 0, 1);
+        root.Controls.Add(statusPanel, 0, 6);
 
         var buttons = new FlowLayoutPanel
         {
@@ -4132,16 +4235,15 @@ internal sealed class MobileConnectionForm : Form
             WrapContents = false
         };
 
-        var close = new Button { Text = "بستن", AutoSize = true };
+        var close = new Button { Text = "بستن", AutoSize = true, Height = 38 };
         close.Click += (_, _) => Close();
 
-        var saveUrl = new Button { Text = "ذخیره آدرس", AutoSize = true };
-        saveUrl.Click += (_, _) =>
+        var save = new Button { Text = "ذخیره اتصال", AutoSize = true, Height = 38 };
+        save.Click += (_, _) =>
         {
             try
             {
-                _api.SaveMobileBaseUrl(_baseUrl.Text);
-                MessageBox.Show(this, "آدرس اتصال موبایل ذخیره شد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                SaveEndpoint(showMessage: true);
             }
             catch (Exception ex)
             {
@@ -4149,21 +4251,21 @@ internal sealed class MobileConnectionForm : Form
             }
         };
 
-        var copyAll = new Button { Text = "کپی همه اطلاعات", AutoSize = true };
+        var copyAll = new Button { Text = "ذخیره و کپی اطلاعات", AutoSize = true, Height = 38 };
         copyAll.Click += (_, _) =>
         {
             try
             {
-                _api.SaveMobileBaseUrl(_baseUrl.Text);
+                var url = SaveEndpoint(showMessage: false);
                 var text =
                     $"OdinVault Mobile{Environment.NewLine}" +
-                    $"Agent URL: {_baseUrl.Text.Trim()}{Environment.NewLine}" +
+                    $"Agent URL: {url}{Environment.NewLine}" +
                     $"API Key: {_apiKey.Text}";
                 Clipboard.SetText(text);
 
                 MessageBox.Show(
                     this,
-                    "آدرس Agent و API Key با هم کپی شدند.",
+                    "URL نهایی و API Key کپی شدند.",
                     "OdinVault",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -4175,10 +4277,171 @@ internal sealed class MobileConnectionForm : Form
         };
 
         buttons.Controls.Add(close);
-        buttons.Controls.Add(saveUrl);
+        buttons.Controls.Add(save);
         buttons.Controls.Add(copyAll);
-        root.Controls.Add(buttons, 0, 5);
+        root.Controls.Add(buttons, 0, 7);
 
         Controls.Add(root);
     }
+
+    private async Task TestPortAsync(Button button)
+    {
+        try
+        {
+            var host = NormalizeHost();
+            var port = ResolvePort();
+            button.Enabled = false;
+            _probeStatus.Text = $"در حال بررسی TCP {host}:{port}...";
+
+            var result = await _api.TestPortAsync(host, port);
+            _probeStatus.Text = result.IsOpen
+                ? $"✓ Port {port} باز است و اتصال TCP برقرار شد{(result.LatencyMilliseconds.HasValue ? $" ({result.LatencyMilliseconds.Value:0} ms)" : string.Empty)}."
+                : $"✕ اتصال به Port {port} برقرار نشد: {result.Error}";
+            _probeStatus.ForeColor = result.IsOpen
+                ? Color.FromArgb(22, 135, 82)
+                : Color.FromArgb(190, 65, 65);
+        }
+        catch (Exception ex)
+        {
+            _probeStatus.Text = $"✕ {ex.Message}";
+            _probeStatus.ForeColor = Color.FromArgb(190, 65, 65);
+        }
+        finally
+        {
+            button.Enabled = true;
+        }
+    }
+
+    private async Task TestAgentAsync(Button button)
+    {
+        try
+        {
+            var url = BuildUrl();
+            button.Enabled = false;
+            _probeStatus.Text = $"در حال تست Agent روی {url}...";
+
+            var result = await _api.TestAgentEndpointAsync(url);
+            _probeStatus.Text = result.Success
+                ? $"✓ Agent پاسخ سالم داد: {result.Message}"
+                : $"✕ اتصال Agent ناموفق بود: {result.Message}";
+            _probeStatus.ForeColor = result.Success
+                ? Color.FromArgb(22, 135, 82)
+                : Color.FromArgb(190, 65, 65);
+        }
+        catch (Exception ex)
+        {
+            _probeStatus.Text = $"✕ {ex.Message}";
+            _probeStatus.ForeColor = Color.FromArgb(190, 65, 65);
+        }
+        finally
+        {
+            button.Enabled = true;
+        }
+    }
+
+    private string SaveEndpoint(bool showMessage)
+    {
+        var url = BuildUrl();
+        _api.SaveMobileBaseUrl(url);
+
+        if (showMessage)
+        {
+            MessageBox.Show(
+                this,
+                $"آدرس اتصال موبایل ذخیره شد:{Environment.NewLine}{url}",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        return url;
+    }
+
+    private void UpdatePreview()
+    {
+        try
+        {
+            _preview.Text = BuildUrl();
+            _preview.ForeColor = Color.FromArgb(37, 99, 235);
+        }
+        catch
+        {
+            _preview.Text = "آدرس ناقص یا نامعتبر";
+            _preview.ForeColor = Color.FromArgb(190, 65, 65);
+        }
+
+        _probeStatus.Text = string.Empty;
+    }
+
+    private string BuildUrl()
+    {
+        var host = NormalizeHost();
+        var scheme = Convert.ToString(_scheme.SelectedItem)?.Trim().ToLowerInvariant();
+        if (scheme is not ("http" or "https"))
+            throw new InvalidOperationException("Protocol باید HTTP یا HTTPS باشد.");
+
+        var portText = _port.Text.Trim();
+        int? port = null;
+        if (!string.IsNullOrWhiteSpace(portText))
+        {
+            if (!int.TryParse(portText, out var parsed) || parsed is < 1 or > 65535)
+                throw new InvalidOperationException("Port باید بین 1 تا 65535 باشد.");
+            port = parsed;
+        }
+
+        var builder = new UriBuilder(scheme, host)
+        {
+            Port = port ?? -1,
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+    }
+
+    private string NormalizeHost()
+    {
+        var host = _host.Text.Trim();
+        if (string.IsNullOrWhiteSpace(host))
+            throw new InvalidOperationException("Base / Host الزامی است.");
+
+        if (host.Contains("://", StringComparison.Ordinal) ||
+            host.Contains('/') ||
+            host.Contains('?') ||
+            host.Contains('#') ||
+            host.Contains('@'))
+        {
+            throw new InvalidOperationException(
+                "در Base / Host فقط IP یا نام دامنه را وارد کنید؛ Protocol و Port جدا هستند.");
+        }
+
+        if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
+            throw new InvalidOperationException("Base / Host معتبر نیست.");
+
+        return host;
+    }
+
+    private int ResolvePort()
+    {
+        var text = _port.Text.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Equals(Convert.ToString(_scheme.SelectedItem), "https", StringComparison.OrdinalIgnoreCase)
+                ? 443
+                : 80;
+        }
+
+        if (!int.TryParse(text, out var port) || port is < 1 or > 65535)
+            throw new InvalidOperationException("Port باید بین 1 تا 65535 باشد.");
+
+        return port;
+    }
+
+    private static Label Caption(string text) => new()
+    {
+        Text = text,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleRight
+    };
 }
