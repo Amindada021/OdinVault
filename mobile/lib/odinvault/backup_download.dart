@@ -28,6 +28,7 @@ class _BackupDownloadState extends State<_BackupDownload> {
   final watch = Stopwatch();
   OdinVaultBackup? backup;
   String? jobId;
+  String? requestId;
   String? path;
   String stage = 'queued';
   String? error;
@@ -48,7 +49,11 @@ class _BackupDownloadState extends State<_BackupDownload> {
       await files.invokeMethod<void>('keepAwake', {'enabled': true});
       if (backup == null) {
         if (jobId == null) {
-          final job = await widget.api.startBackupJob(widget.databaseId!);
+          requestId ??= widget.api.createRequestId();
+          final job = await widget.api.startBackupJob(
+            widget.databaseId!,
+            requestId: requestId!,
+          );
           jobId = job['id'].toString();
         }
         while (!closed) {
