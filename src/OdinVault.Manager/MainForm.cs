@@ -10,6 +10,7 @@ internal sealed class MainForm : Form
     private bool _allowExit;
     private readonly Label _agentStatus = new();
     private readonly Label _lastRefresh = new();
+    private readonly Label _sidebarAgentStatus = new();
     private readonly DataGridView _grid = new();
     private readonly Button _refreshButton = new();
     private readonly Button _addButton = new();
@@ -269,14 +270,14 @@ internal sealed class MainForm : Form
             Padding = Padding.Empty
         };
 
-        AddNavigationButton(navigation, "dashboard", "داشبورد");
-        AddNavigationButton(navigation, "databases", "دیتابیس‌ها");
-        AddNavigationButton(navigation, "backups", "بکاپ‌ها");
-        AddNavigationButton(navigation, "storage", "ذخیره‌سازی");
-        AddNavigationButton(navigation, "restore", "بازیابی");
-        AddNavigationButton(navigation, "alerts", "هشدارها");
-        AddNavigationButton(navigation, "reports", "گزارش‌ها");
-        AddNavigationButton(navigation, "settings", "تنظیمات");
+        AddNavigationButton(navigation, "dashboard", "▦  داشبورد");
+        AddNavigationButton(navigation, "databases", "▤  دیتابیس‌ها");
+        AddNavigationButton(navigation, "backups", "◷  بکاپ‌ها");
+        AddNavigationButton(navigation, "storage", "▰  ذخیره‌سازی");
+        AddNavigationButton(navigation, "restore", "↶  بازیابی");
+        AddNavigationButton(navigation, "alerts", "●  هشدارها");
+        AddNavigationButton(navigation, "reports", "▥  گزارش‌ها");
+        AddNavigationButton(navigation, "settings", "⚙  تنظیمات");
         sidebar.Controls.Add(navigation, 0, 1);
 
         var footer = new Panel
@@ -285,15 +286,13 @@ internal sealed class MainForm : Form
             Margin = new Padding(0, 8, 0, 0),
             BackColor = Color.FromArgb(34, 44, 60)
         };
-        footer.Controls.Add(new Label
-        {
-            Text = "● Agent\r\nlocalhost:5188",
-            Dock = DockStyle.Fill,
-            Padding = new Padding(10, 8, 10, 8),
-            TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(190, 205, 220),
-            Font = new Font(Font.FontFamily, 9F)
-        });
+        _sidebarAgentStatus.Text = "● Agent در حال بررسی\r\nlocalhost:5188";
+        _sidebarAgentStatus.Dock = DockStyle.Fill;
+        _sidebarAgentStatus.Padding = new Padding(10, 8, 10, 8);
+        _sidebarAgentStatus.TextAlign = ContentAlignment.MiddleRight;
+        _sidebarAgentStatus.ForeColor = Color.FromArgb(190, 205, 220);
+        _sidebarAgentStatus.Font = new Font(Font.FontFamily, 9F, FontStyle.Bold);
+        footer.Controls.Add(_sidebarAgentStatus);
         sidebar.Controls.Add(footer, 0, 2);
 
         return sidebar;
@@ -305,10 +304,10 @@ internal sealed class MainForm : Form
         {
             Text = text,
             Width = 198,
-            Height = 44,
+            Height = 46,
             FlatStyle = FlatStyle.Flat,
             TextAlign = ContentAlignment.MiddleRight,
-            Padding = new Padding(12, 0, 12, 0),
+            Padding = new Padding(14, 0, 14, 0),
             Margin = new Padding(0, 0, 0, 6),
             BackColor = Color.FromArgb(27, 35, 48),
             ForeColor = Color.FromArgb(218, 225, 235),
@@ -1726,8 +1725,8 @@ internal sealed class MainForm : Form
             return;
 
         button.Text = unreadCount > 0
-            ? $"هشدارها  ({unreadCount})"
-            : "هشدارها";
+            ? $"●  هشدارها  ({unreadCount})"
+            : "●  هشدارها";
     }
 
     private static string FormatAlertSeverity(string severity) =>
@@ -2750,11 +2749,38 @@ internal sealed class MainForm : Form
             var dashboard = await dashboardTask;
             if (dashboard is not null)
             {
-                _agentStatus.Text = dashboard.Status.Equals("healthy", StringComparison.OrdinalIgnoreCase)
-                    ? dashboard.ProtectionStatus.Equals("healthy", StringComparison.OrdinalIgnoreCase)
+                var agentHealthy = dashboard.Status.Equals("healthy", StringComparison.OrdinalIgnoreCase);
+                var protectionHealthy = dashboard.ProtectionStatus.Equals("healthy", StringComparison.OrdinalIgnoreCase);
+
+                _agentStatus.Text = agentHealthy
+                    ? protectionHealthy
                         ? "● Agent فعال • حفاظت سالم"
                         : "● Agent فعال • نیاز به بررسی"
                     : "● Agent مشکل دارد";
+
+                _agentStatus.ForeColor = !agentHealthy
+                    ? Color.FromArgb(190, 65, 65)
+                    : protectionHealthy
+                        ? Color.FromArgb(42, 145, 96)
+                        : Color.FromArgb(190, 125, 35);
+
+                _sidebarAgentStatus.Text = agentHealthy
+                    ? protectionHealthy
+                        ? "● Agent Online\r\nحفاظت سالم"
+                        : "● Agent Online\r\nنیاز به بررسی"
+                    : "● Agent Offline\r\nlocalhost:5188";
+
+                _sidebarAgentStatus.ForeColor = !agentHealthy
+                    ? Color.FromArgb(245, 135, 135)
+                    : protectionHealthy
+                        ? Color.FromArgb(125, 225, 170)
+                        : Color.FromArgb(245, 195, 105);
+
+                _trayIcon.Text = agentHealthy
+                    ? protectionHealthy
+                        ? "OdinVault • Agent Online • Protected"
+                        : "OdinVault • Agent Online • Attention"
+                    : "OdinVault • Agent Offline";
 
                 RenderDashboard(dashboard);
             }
@@ -2801,6 +2827,10 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             _agentStatus.Text = "● Agent در دسترس نیست";
+            _agentStatus.ForeColor = Color.FromArgb(190, 65, 65);
+            _sidebarAgentStatus.Text = "● Agent Offline\r\nlocalhost:5188";
+            _sidebarAgentStatus.ForeColor = Color.FromArgb(245, 135, 135);
+            _trayIcon.Text = "OdinVault • Agent Offline";
             ShowError(ex);
         }
         finally
