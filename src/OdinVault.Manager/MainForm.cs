@@ -14,6 +14,7 @@ internal sealed class MainForm : Form
     private readonly Button _deleteButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
+    private readonly Button _copyApiKeyButton = new();
     private readonly Button _updateButton = new();
 
     public MainForm()
@@ -102,9 +103,10 @@ internal sealed class MainForm : Form
         ConfigureButton(_deleteButton, "حذف", async (_, _) => await DeleteSelectedAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ انتخاب‌شده‌ها", async (_, _) => await BackupSelectedAsync());
+        ConfigureButton(_copyApiKeyButton, "کپی کلید API", (_, _) => CopyApiKey());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
-        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _updateButton]);
+        actions.Controls.AddRange([_backupButton, _testButton, _deleteButton, _editButton, _discoverButton, _addButton, _refreshButton, _copyApiKeyButton, _updateButton]);
         root.Controls.Add(actions, 0, 1);
 
         _grid.Dock = DockStyle.Fill;
@@ -429,6 +431,26 @@ internal sealed class MainForm : Form
         }
     }
 
+    private void CopyApiKey()
+    {
+        try
+        {
+            var apiKey = _api.GetApiKey();
+            Clipboard.SetText(apiKey);
+
+            MessageBox.Show(
+                this,
+                "کلید API در Clipboard کپی شد. حالا می‌توانید آن را داخل اپ موبایل Paste کنید.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
     private async Task BackupSelectedAsync()
     {
         _grid.EndEdit();
@@ -533,6 +555,7 @@ internal sealed class MainForm : Form
         _deleteButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
+        _copyApiKeyButton.Enabled = !busy;
         _updateButton.Enabled = !busy;
     }
 
