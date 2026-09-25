@@ -133,6 +133,11 @@ jobs:
           from pathlib import Path
           path = Path("android/app/src/main/AndroidManifest.xml")
           text = path.read_text()
+          if 'android.permission.INTERNET' not in text:
+              text = text.replace(
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>'
+              )
           text = text.replace('android:label="odinvault_mobile"', 'android:label="OdinVault"')
           text = text.replace(
               'android:name="${applicationName}"',
