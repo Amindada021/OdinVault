@@ -157,7 +157,7 @@ internal sealed class RestoreWizardForm : Form
                 return;
 
             e.Cancel = true;
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "Restore در حال اجراست. تا پایان عملیات این پنجره را نبندید.",
                 "OdinVault",
@@ -190,7 +190,7 @@ internal sealed class RestoreWizardForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
@@ -223,14 +223,14 @@ internal sealed class RestoreWizardForm : Form
     {
         if (backupCombo.SelectedItem is not RestoreBackupItem item)
         {
-            MessageBox.Show(this, "ابتدا بکاپ را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "ابتدا بکاپ را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
         var target = targetDatabase.Text.Trim();
         if (string.IsNullOrWhiteSpace(target))
         {
-            MessageBox.Show(this, "نام دیتابیس مقصد را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "نام دیتابیس مقصد را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -269,7 +269,7 @@ internal sealed class RestoreWizardForm : Form
             confirm.Checked = false;
             restoreButton.Enabled = false;
             status.Text = "پیش‌بررسی ناموفق بود.";
-            MessageBox.Show(this, ex.Message, "Restore Preflight", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, ex.Message, "Restore Preflight", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
@@ -286,7 +286,7 @@ internal sealed class RestoreWizardForm : Form
             return;
         }
 
-        var answer = MessageBox.Show(
+        var answer = OdinDialog.Show(
             this,
             $"دیتابیس جدید «{currentPreflight.TargetDatabaseName}» از بکاپ انتخاب‌شده ساخته شود؟\n\nاین عملیات دیتابیس موجودی را overwrite نمی‌کند.",
             "تأیید Restore",
@@ -315,7 +315,7 @@ internal sealed class RestoreWizardForm : Form
             status.Text =
                 $"Restore موفق شد. دیتابیس {result.TargetDatabaseName} در {FormatDuration(result.DurationSeconds)} بازیابی شد.";
 
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 status.Text,
                 "Restore موفق",
@@ -329,7 +329,7 @@ internal sealed class RestoreWizardForm : Form
         catch (Exception ex)
         {
             status.Text = "Restore ناموفق بود.";
-            MessageBox.Show(this, ex.Message, "Restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            OdinDialog.Show(this, ex.Message, "Restore", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {

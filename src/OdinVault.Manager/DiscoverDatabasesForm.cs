@@ -184,7 +184,7 @@ internal sealed class DiscoverDatabasesForm : Form
     {
         if (string.IsNullOrWhiteSpace(_host.Text))
         {
-            MessageBox.Show(this, "آدرس SQL Server را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, "آدرس SQL Server را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -225,12 +225,12 @@ internal sealed class DiscoverDatabasesForm : Form
 
             if (_items.Count == 0)
             {
-                MessageBox.Show(this, "هیچ دیتابیسی پیدا نشد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                OdinDialog.Show(this, "هیچ دیتابیسی پیدا نشد.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "خطای شناسایی SQL Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            OdinDialog.Show(this, ex.Message, "خطای شناسایی SQL Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -252,13 +252,13 @@ internal sealed class DiscoverDatabasesForm : Form
 
         if (selected.Count == 0)
         {
-            MessageBox.Show(this, "حداقل یک دیتابیس آماده بکاپ را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OdinDialog.Show(this, "حداقل یک دیتابیس آماده بکاپ را انتخاب کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(_backupDirectory.Text))
         {
-            MessageBox.Show(this, "مسیر بکاپ را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            OdinDialog.Show(this, "مسیر بکاپ را وارد کنید.", "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -304,7 +304,7 @@ internal sealed class DiscoverDatabasesForm : Form
             if (errors.Count > 0)
                 message += Environment.NewLine + Environment.NewLine + "خطاها:" + Environment.NewLine + string.Join(Environment.NewLine, errors);
 
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 message,
                 "OdinVault",

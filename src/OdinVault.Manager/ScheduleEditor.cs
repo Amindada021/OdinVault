@@ -271,7 +271,7 @@ internal sealed class ScheduleEditor : UserControl
     {
         if (_multiTimes.Count <= 1)
         {
-            MessageBox.Show(
+            OdinDialog.Show(
                 this,
                 "برای حالت چند زمان، حداقل یک زمان باید باقی بماند.",
                 "زمان‌بندی",

@@ -134,7 +134,7 @@ internal sealed class ReplicaSetupForm : Form
         busy = true;
         UseWaitCursor = true;
         try { await action(); }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex) { OdinDialog.Show(this, ex.Message, "OdinVault", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { busy = false; UseWaitCursor = false; }
     }
 }
