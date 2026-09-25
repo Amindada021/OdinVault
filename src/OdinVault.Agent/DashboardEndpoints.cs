@@ -8,6 +8,102 @@ public static class DashboardEndpoints
 {
     public static void MapDashboardEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/dashboard/stats", async (
+            int? days,
+            OdinVaultDbContext db,
+            CancellationToken ct) =>
+        {
+            var rangeDays = days == 7 ? 7 : 30;
+            var todayUtc = DateTime.UtcNow.Date;
+            var fromUtc = todayUtc.AddDays(-(rangeDays - 1));
+
+            var databases = await db.DatabaseEndpoints
+                .AsNoTracking()
+                .Where(x => x.IsEnabled)
+                .OrderBy(x => x.Name)
+                .Select(x => new { x.Id, x.Name })
+                .ToListAsync(ct);
+
+            var databaseIds = databases.Select(x => x.Id).ToList();
+            var records = await db.BackupRecords
+                .AsNoTracking()
+                .Where(x => databaseIds.Contains(x.DatabaseEndpointId) &&
+                            x.StartedAtUtc >= fromUtc)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.DatabaseEndpointId,
+                    x.Status,
+                    x.SizeBytes,
+                    x.StartedAtUtc,
+                    x.CompletedAtUtc
+                })
+                .ToListAsync(ct);
+
+            var daily = Enumerable.Range(0, rangeDays)
+                .Select(offset =>
+                {
+                    var date = fromUtc.AddDays(offset);
+                    var next = date.AddDays(1);
+                    var bucket = records.Where(x =>
+                        x.StartedAtUtc >= date &&
+                        x.StartedAtUtc < next).ToList();
+
+                    var succeeded = bucket
+                        .Where(x => x.Status == BackupStatus.Succeeded)
+                        .ToList();
+
+                    var durations = succeeded
+                        .Where(x => x.CompletedAtUtc.HasValue)
+                        .Select(x => Math.Max(
+                            0,
+                            (x.CompletedAtUtc!.Value - x.StartedAtUtc).TotalSeconds))
+                        .ToList();
+
+                    return new
+                    {
+                        dateUtc = date,
+                        succeeded = succeeded.Count,
+                        failed = bucket.Count(x => x.Status == BackupStatus.Failed),
+                        totalSizeBytes = succeeded.Sum(x => x.SizeBytes ?? 0L),
+                        averageDurationSeconds = durations.Count == 0
+                            ? (double?)null
+                            : durations.Average()
+                    };
+                })
+                .ToArray();
+
+            var latestDatabaseSizes = databases
+                .Select(database =>
+                {
+                    var latest = records
+                        .Where(x => x.DatabaseEndpointId == database.Id &&
+                                    x.Status == BackupStatus.Succeeded &&
+                                    x.SizeBytes.HasValue)
+                        .OrderByDescending(x => x.StartedAtUtc)
+                        .FirstOrDefault();
+
+                    return new
+                    {
+                        databaseId = database.Id,
+                        databaseName = database.Name,
+                        sizeBytes = latest?.SizeBytes
+                    };
+                })
+                .Where(x => x.sizeBytes.HasValue)
+                .OrderByDescending(x => x.sizeBytes)
+                .ToArray();
+
+            return Results.Ok(new
+            {
+                rangeDays,
+                fromUtc,
+                toUtc = todayUtc.AddDays(1),
+                daily,
+                databaseSizes = latestDatabaseSizes
+            });
+        });
+
         app.MapGet("/api/dashboard", async (
             OdinVaultDbContext db,
             AgentHealthService healthService,
