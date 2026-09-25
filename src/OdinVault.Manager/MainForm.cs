@@ -14,6 +14,7 @@ internal sealed class MainForm : Form
     private readonly Button _deleteButton = new();
     private readonly Button _testButton = new();
     private readonly Button _backupButton = new();
+    private readonly Button _detailsButton = new();
     private readonly Button _mobileConnectionButton = new();
     private readonly Button _updateButton = new();
     private readonly Panel _contentHost = new();
@@ -32,6 +33,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox _chartRange = new();
     private Control? _dashboardPage;
     private Control? _databasesPage;
+    private Guid? _currentDetailsDatabaseId;
 
     public MainForm()
     {
@@ -807,6 +809,7 @@ internal sealed class MainForm : Form
         ConfigureButton(_deleteButton, "حذف", async (_, _) => await DeleteSelectedAsync());
         ConfigureButton(_testButton, "تست اتصال", async (_, _) => await TestSelectedAsync());
         ConfigureButton(_backupButton, "بکاپ انتخاب‌شده‌ها", async (_, _) => await BackupSelectedAsync());
+        ConfigureButton(_detailsButton, "جزئیات", async (_, _) => await ShowSelectedDatabaseDetailsAsync());
         ConfigureButton(_mobileConnectionButton, "اتصال موبایل", (_, _) => ShowMobileConnection());
         ConfigureButton(_updateButton, "بررسی بروزرسانی", async (_, _) => await CheckForUpdatesAsync(silent: false));
 
@@ -821,6 +824,7 @@ internal sealed class MainForm : Form
         actions.Controls.AddRange(
         [
             _backupButton,
+            _detailsButton,
             _testButton,
             _deleteButton,
             _editButton,
@@ -889,7 +893,16 @@ internal sealed class MainForm : Form
         _grid.Columns.Add("Schedule", "زمان‌بندی");
         _grid.Columns.Add("Retention", "نگهداری");
         _grid.Columns.Add("بررسی سلامت", "بررسی سلامت");
+        _grid.Columns.Add("Protection", "محافظت");
+        _grid.Columns.Add("LastBackup", "آخرین بکاپ");
+        _grid.Columns.Add("BackupSize", "حجم");
         _grid.Columns.Add("Enabled", "فعال");
+
+        _grid.CellDoubleClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0 && _grid.Rows[e.RowIndex].Tag is Guid id)
+                await ShowDatabaseDetailsAsync(id);
+        };
     }
 
     private static void ConfigureButton(Button button, string text, EventHandler handler)
@@ -910,9 +923,10 @@ internal sealed class MainForm : Form
         {
             var dashboardTask = _api.GetDashboardAsync();
             var databasesTask = _api.GetDatabasesAsync();
+            var overviewsTask = _api.GetDatabaseOverviewsAsync();
             var chartDays = _chartRange.SelectedIndex == 0 ? 7 : 30;
             var statsTask = _api.GetDashboardStatsAsync(chartDays);
-            await Task.WhenAll(dashboardTask, databasesTask, statsTask);
+            await Task.WhenAll(dashboardTask, databasesTask, overviewsTask, statsTask);
 
             var dashboard = await dashboardTask;
             if (dashboard is not null)
@@ -931,10 +945,12 @@ internal sealed class MainForm : Form
                 RenderDashboardCharts(stats);
 
             var databases = await databasesTask;
+            var overviews = (await overviewsTask).ToDictionary(x => x.Id);
             _grid.Rows.Clear();
 
             foreach (var db in databases)
             {
+                overviews.TryGetValue(db.Id, out var overview);
                 var rowIndex = _grid.Rows.Add(
                     false,
                     db.Name,
@@ -943,6 +959,11 @@ internal sealed class MainForm : Form
                     ScheduleEditor.FormatCron(db.Policy?.ScheduleCron),
                     db.Policy is null ? "-" : $"{db.Policy.MaxLocalBackups} فایل",
                     db.Policy?.VerifyAfterBackup == true ? "بله" : "خیر",
+                    overview?.IsProtected == true ? "سالم" : "نیاز به بررسی",
+                    overview?.LatestBackupAtUtc is DateTime lastBackup
+                        ? FormatDashboardTime(lastBackup)
+                        : "—",
+                    FormatBytes(overview?.LatestBackupSizeBytes),
                     db.IsEnabled ? "بله" : "خیر");
 
                 _grid.Rows[rowIndex].Tag = db.Id;
@@ -965,6 +986,370 @@ internal sealed class MainForm : Form
             SetBusy(false);
         }
     }
+
+    private async Task ShowSelectedDatabaseDetailsAsync()
+    {
+        if (!TryGetSelectedDatabaseId(out var id))
+            return;
+
+        await ShowDatabaseDetailsAsync(id);
+    }
+
+    private async Task ShowDatabaseDetailsAsync(Guid id)
+    {
+        SetBusy(true);
+        try
+        {
+            var details = await _api.GetDatabaseDetailsAsync(id);
+            if (details is null)
+                return;
+
+            _currentDetailsDatabaseId = id;
+            _pageTitle.Text = $"جزئیات {details.Database.Name}";
+
+            foreach (var item in _navigationButtons)
+                item.Value.BackColor = Color.FromArgb(27, 35, 48);
+
+            _contentHost.Controls.Clear();
+            _contentHost.Controls.Add(BuildDatabaseDetailsPage(details));
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private Control BuildDatabaseDetailsPage(DatabaseDetailsResponse details)
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 126));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10)
+        };
+
+        var back = new Button { Text = "بازگشت به دیتابیس‌ها", AutoSize = true, Height = 36 };
+        back.Click += (_, _) => ShowPage("databases");
+        var backupNow = new Button { Text = "بکاپ الآن", AutoSize = true, Height = 36 };
+        backupNow.Click += async (_, _) =>
+        {
+            try
+            {
+                SetBusy(true);
+                await _api.RunBackupAsync(details.Database.Id, progress: new Progress<string>(text => _agentStatus.Text = $"{details.Database.Name}: {text}"));
+                await ShowDatabaseDetailsAsync(details.Database.Id);
+                await RefreshAllAsync();
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        };
+
+        toolbar.Controls.Add(backupNow);
+        toolbar.Controls.Add(back);
+        root.Controls.Add(toolbar, 0, 0);
+
+        var cards = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, 14)
+        };
+        for (var i = 0; i < 4; i++)
+            cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        cards.Controls.Add(BuildDetailsCard(
+            "وضعیت محافظت",
+            details.Protection.IsProtected ? "محافظت‌شده" : "نیاز به بررسی",
+            details.Database.IsEnabled ? "دیتابیس فعال" : "دیتابیس غیرفعال"), 0, 0);
+
+        cards.Controls.Add(BuildDetailsCard(
+            "آخرین بکاپ",
+            details.Protection.LatestBackupAtUtc is DateTime last
+                ? FormatDashboardTime(last)
+                : "بدون سابقه",
+            FormatBytes(details.Protection.LatestBackupSizeBytes)), 1, 0);
+
+        cards.Controls.Add(BuildDetailsCard(
+            "Verify",
+            FormatVerificationStatus(details.Protection.LatestVerificationStatus),
+            details.Database.Policy?.VerifyAfterBackup == true ? "بررسی پس از بکاپ فعال است" : "Verify غیرفعال است"), 2, 0);
+
+        cards.Controls.Add(BuildDetailsCard(
+            "Replica",
+            $"{details.Protection.LatestReplicaSucceeded} / {details.Protection.LatestReplicaTotal}",
+            "مقصد موفق / کل مقصد برای آخرین بکاپ"), 3, 0);
+
+        root.Controls.Add(cards, 0, 1);
+
+        var main = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty
+        };
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+
+        var history = BuildDatabaseHistory(details);
+        main.Controls.Add(history, 0, 0);
+
+        var right = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty
+        };
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
+
+        var sizeChart = new BackupChartControl
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(6),
+            ChartTitle = "روند حجم بکاپ این دیتابیس",
+            Kind = BackupChartKind.Line,
+            ValueFormatter = value => FormatBytes((long)value)
+        };
+
+        var durationChart = new BackupChartControl
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(6),
+            ChartTitle = "مدت زمان بکاپ",
+            Kind = BackupChartKind.Line,
+            ValueFormatter = FormatDurationAxis
+        };
+
+        var successful = details.Backups
+            .Where(x => x.Status == 2)
+            .OrderBy(x => x.StartedAtUtc)
+            .TakeLast(20)
+            .ToArray();
+        var labels = successful.Select(x => FormatChartDate(x.StartedAtUtc)).ToArray();
+
+        sizeChart.SetData(
+            labels,
+            new BackupChartSeries("حجم", successful.Select(x => x.SizeBytes.HasValue ? (double?)x.SizeBytes.Value : null).ToArray()));
+
+        durationChart.SetData(
+            labels,
+            new BackupChartSeries("مدت", successful.Select(x =>
+                x.CompletedAtUtc.HasValue
+                    ? (double?)Math.Max(0, (x.CompletedAtUtc.Value - x.StartedAtUtc).TotalSeconds)
+                    : null).ToArray()));
+
+        right.Controls.Add(sizeChart, 0, 0);
+        right.Controls.Add(durationChart, 0, 1);
+        right.Controls.Add(BuildDatabaseInfoCard(details), 0, 2);
+        main.Controls.Add(right, 1, 0);
+
+        root.Controls.Add(main, 0, 2);
+        return root;
+    }
+
+    private Control BuildDetailsCard(string title, string value, string subtitle)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(6),
+            Padding = new Padding(14, 10, 14, 10),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+
+        card.Controls.Add(new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(105, 115, 130)
+        }, 0, 0);
+
+        card.Controls.Add(new Label
+        {
+            Text = value,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 16F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(40, 50, 65)
+        }, 0, 1);
+
+        card.Controls.Add(new Label
+        {
+            Text = subtitle,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(130, 140, 155),
+            Font = new Font(Font.FontFamily, 8.5F)
+        }, 0, 2);
+
+        return card;
+    }
+
+    private Control BuildDatabaseHistory(DatabaseDetailsResponse details)
+    {
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(6),
+            Padding = new Padding(1),
+            BackColor = Color.White,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        card.Controls.Add(new Label
+        {
+            Text = "تاریخچه بکاپ",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(14, 0, 14, 0),
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(Font.FontFamily, 11F, FontStyle.Bold)
+        }, 0, 0);
+
+        var grid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            RowHeadersVisible = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            BackgroundColor = Color.White,
+            BorderStyle = BorderStyle.None,
+            EnableHeadersVisualStyles = false
+        };
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 244, 248);
+        grid.Columns.Add("Date", "زمان");
+        grid.Columns.Add("Status", "وضعیت");
+        grid.Columns.Add("Verify", "Verify");
+        grid.Columns.Add("Size", "حجم");
+        grid.Columns.Add("Duration", "مدت");
+        grid.Columns.Add("Local", "Local");
+
+        foreach (var backup in details.Backups.Take(40))
+        {
+            var duration = backup.CompletedAtUtc.HasValue
+                ? FormatDurationAxis(Math.Max(0, (backup.CompletedAtUtc.Value - backup.StartedAtUtc).TotalSeconds))
+                : "—";
+
+            grid.Rows.Add(
+                FormatDashboardTime(backup.CompletedAtUtc ?? backup.StartedAtUtc),
+                FormatBackupStatus(backup.Status),
+                FormatVerificationStatus(backup.VerificationStatus),
+                FormatBytes(backup.SizeBytes),
+                duration,
+                backup.LocalFileAvailable ? "موجود" : "حذف‌شده");
+        }
+
+        card.Controls.Add(grid, 0, 1);
+        return card;
+    }
+
+    private Control BuildDatabaseInfoCard(DatabaseDetailsResponse details)
+    {
+        var latestReplicas = details.Backups.Count == 0
+            ? []
+            : details.Replicas
+                .Where(x => x.BackupRecordId == details.Backups[0].Id)
+                .ToArray();
+
+        var replicaText = latestReplicas.Length == 0
+            ? "Replica: مقصدی برای آخرین بکاپ ثبت نشده"
+            : "Replica: " + string.Join(
+                " • ",
+                latestReplicas.Select(x => $"{x.Name}: {FormatReplicaStatus(x.Status)}"));
+
+        var schedule = ScheduleEditor.FormatCron(details.Database.Policy?.ScheduleCron);
+        var text =
+            $"SQL Server: {details.Database.Host}{(details.Database.Port is > 0 ? $":{details.Database.Port}" : string.Empty)}\r\n" +
+            $"Database: {details.Database.DatabaseName}\r\n" +
+            $"زمان‌بندی: {schedule}\r\n" +
+            replicaText;
+
+        return new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(6),
+            Padding = new Padding(14),
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Controls =
+            {
+                new Label
+                {
+                    Text = text,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleRight,
+                    ForeColor = Color.FromArgb(70, 80, 95)
+                }
+            }
+        };
+    }
+
+    private static string FormatBackupStatus(int status) => status switch
+    {
+        2 => "موفق",
+        3 => "ناموفق",
+        1 => "در حال اجرا",
+        _ => "در انتظار"
+    };
+
+    private static string FormatVerificationStatus(int? status) => status switch
+    {
+        2 => "موفق",
+        3 => "ناموفق",
+        1 => "در حال بررسی",
+        0 => "درخواست نشده",
+        _ => "—"
+    };
+
+    private static string FormatReplicaStatus(int status) => status switch
+    {
+        2 => "موفق",
+        3 => "ناموفق",
+        1 => "در حال ارسال",
+        _ => "در انتظار"
+    };
 
     private async Task AddDatabaseAsync()
     {
@@ -1313,6 +1698,7 @@ internal sealed class MainForm : Form
         _deleteButton.Enabled = !busy;
         _testButton.Enabled = !busy;
         _backupButton.Enabled = !busy;
+        _detailsButton.Enabled = !busy;
         _mobileConnectionButton.Enabled = !busy;
         _updateButton.Enabled = !busy;
     }
