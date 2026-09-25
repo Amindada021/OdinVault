@@ -173,7 +173,7 @@ internal sealed class MainForm : Form
                     db.Name,
                     db.Port is > 0 ? $"{db.Host}:{db.Port}" : db.Host,
                     db.DatabaseName,
-                    string.IsNullOrWhiteSpace(db.Policy?.ScheduleCron) ? "دستی" : db.Policy.ScheduleCron,
+                    ScheduleEditor.FormatCron(db.Policy?.ScheduleCron),
                     db.Policy is null ? "-" : $"{db.Policy.MaxLocalBackups} فایل",
                     db.Policy?.VerifyAfterBackup == true ? "بله" : "خیر",
                     db.IsEnabled ? "بله" : "خیر");
@@ -558,7 +558,7 @@ internal sealed class EditDatabaseForm : Form
     private readonly CheckBox _clearPassword = new() { Text = "حذف رمز ذخیره‌شده", AutoSize = true };
     private readonly TextBox _backupDirectory = new();
     private readonly NumericUpDown _maxBackups = new() { Minimum = 1, Maximum = 1000 };
-    private readonly TextBox _cron = new();
+    private readonly ScheduleEditor _schedule = new();
     private readonly CheckBox _trustCertificate = new() { Text = "Trust Server Certificate", AutoSize = true };
     private readonly CheckBox _verify = new() { Text = "Verify بعد از بکاپ", AutoSize = true };
     private readonly CheckBox _enabled = new() { Text = "فعال", AutoSize = true };
@@ -591,7 +591,7 @@ internal sealed class EditDatabaseForm : Form
             _backupDirectory.Text = database.Policy.BackupDirectory;
             _maxBackups.Value = Math.Clamp(database.Policy.MaxLocalBackups, 1, 1000);
             _verify.Checked = database.Policy.VerifyAfterBackup;
-            _cron.Text = database.Policy.ScheduleCron ?? string.Empty;
+            _schedule.ScheduleCron = database.Policy.ScheduleCron;
         }
         else
         {
@@ -623,7 +623,7 @@ internal sealed class EditDatabaseForm : Form
         AddField(panel, 5, hasPassword ? "Password (خالی = بدون تغییر)" : "Password", _password);
         AddField(panel, 6, "مسیر بکاپ", _backupDirectory);
         AddField(panel, 7, "تعداد نگهداری", _maxBackups);
-        AddField(panel, 8, "Cron (UTC)", _cron);
+        AddField(panel, 8, "زمان‌بندی", _schedule);
 
         var checks = new FlowLayoutPanel
         {
@@ -637,7 +637,7 @@ internal sealed class EditDatabaseForm : Form
 
         var note = new Label
         {
-            Text = "برای زمان‌بندی، Cron استاندارد UTC وارد کنید؛ خالی یعنی دستی. مثال هر شب ساعت 02:00 UTC: 0 2 * * *",
+            Text = "زمان‌بندی را ساده انتخاب کنید. برای الگوهای خاص می‌توانید حالت «پیشرفته (Cron)» را انتخاب کنید.",
             AutoSize = true,
             MaximumSize = new Size(560, 0),
             ForeColor = SystemColors.GrayText
@@ -692,12 +692,20 @@ internal sealed class EditDatabaseForm : Form
             _trustCertificate.Checked,
             _enabled.Checked);
 
-        PolicyRequest = new UpdateBackupPolicyRequest(
-            _backupDirectory.Text.Trim(),
-            (int)_maxBackups.Value,
-            _verify.Checked,
-            NullIfWhiteSpace(_cron.Text),
-            _enabled.Checked);
+        try
+        {
+            PolicyRequest = new UpdateBackupPolicyRequest(
+                _backupDirectory.Text.Trim(),
+                (int)_maxBackups.Value,
+                _verify.Checked,
+                _schedule.ScheduleCron,
+                _enabled.Checked);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
 
         DialogResult = DialogResult.OK;
         Close();
@@ -732,7 +740,7 @@ internal sealed class AddDatabaseForm : Form
     private readonly TextBox _password = new() { UseSystemPasswordChar = true };
     private readonly TextBox _backupDirectory = new() { Text = @"D:\Backups\OdinVault" };
     private readonly NumericUpDown _maxBackups = new() { Minimum = 1, Maximum = 1000, Value = 7 };
-    private readonly TextBox _cron = new();
+    private readonly ScheduleEditor _schedule = new();
     private readonly CheckBox _trustCertificate = new() { Text = "Trust Server Certificate", Checked = true, AutoSize = true };
     private readonly CheckBox _verify = new() { Text = "Verify بعد از بکاپ", Checked = true, AutoSize = true };
     private readonly CheckBox _enabled = new() { Text = "فعال", Checked = true, AutoSize = true };
@@ -769,7 +777,7 @@ internal sealed class AddDatabaseForm : Form
         AddField(panel, 5, "Password", _password);
         AddField(panel, 6, "مسیر بکاپ روی SQL Server", _backupDirectory);
         AddField(panel, 7, "تعداد فایل محلی", _maxBackups);
-        AddField(panel, 8, "Cron (UTC، اختیاری)", _cron);
+        AddField(panel, 8, "زمان‌بندی", _schedule);
 
         var checks = new FlowLayoutPanel
         {
@@ -840,6 +848,17 @@ internal sealed class AddDatabaseForm : Form
             return;
         }
 
+        string? scheduleCron;
+        try
+        {
+            scheduleCron = _schedule.ScheduleCron;
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(this, ex.Message, "زمان‌بندی", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         Request = new CreateDatabaseRequest(
             _name.Text.Trim(),
             _host.Text.Trim(),
@@ -851,7 +870,7 @@ internal sealed class AddDatabaseForm : Form
             _backupDirectory.Text.Trim(),
             (int)_maxBackups.Value,
             _verify.Checked,
-            NullIfWhiteSpace(_cron.Text),
+            scheduleCron,
             _enabled.Checked);
 
         DialogResult = DialogResult.OK;
