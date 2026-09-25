@@ -4150,6 +4150,8 @@ internal sealed class EditDatabaseForm : Form
         }
 
         BuildUi(database.HasPassword);
+    
+        UiLayout.Apply(this);
     }
 
     private void BuildUi(bool hasPassword)
@@ -4367,6 +4369,8 @@ internal sealed class AddDatabaseForm : Form
         AcceptButton = save;
         CancelButton = cancel;
         Controls.Add(panel);
+    
+        UiLayout.Apply(this);
     }
 
     private static void AddField(TableLayoutPanel panel, int row, string label, Control control)
