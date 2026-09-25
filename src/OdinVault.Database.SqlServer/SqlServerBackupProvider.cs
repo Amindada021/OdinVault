@@ -28,7 +28,7 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
         await connection.OpenAsync(cancellationToken);
 
         var quotedDatabase = new SqlCommandBuilder().QuoteIdentifier(databaseName);
-        var backupSql = $"BACKUP DATABASE {quotedDatabase} TO DISK = @path WITH COPY_ONLY, INIT, CHECKSUM, STATS = 5;";
+        var backupSql = $"BACKUP DATABASE {quotedDatabase} TO DISK = @path WITH COPY_ONLY, INIT, COMPRESSION, CHECKSUM, STATS = 5;";
 
         await using (var backupCommand = new SqlCommand(backupSql, connection) { CommandTimeout = 0 })
         {
