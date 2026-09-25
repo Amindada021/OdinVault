@@ -70,15 +70,18 @@ public sealed class OdinVaultReplicaStorage(
         var result = await response.Content.ReadFromJsonAsync<ReplicaUploadResponse>(cancellationToken: cancellationToken)
             ?? throw new IOException("Replica Agent returned an empty response.");
 
-        if (!string.Equals(result.Sha256, contentHash, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(result.Sha256) &&
+            !string.Equals(result.Sha256, contentHash, StringComparison.OrdinalIgnoreCase))
+        {
             throw new IOException("Replica Agent returned a content hash that does not match the source backup.");
+        }
 
         return new StorageUploadResult(
             "odinvault-replica",
             result.Id,
             result.Path,
             result.SizeBytes,
-            result.Sha256);
+            string.IsNullOrWhiteSpace(result.Sha256) ? null : result.Sha256);
     }
 
     public async Task DownloadToAsync(string remoteId, Stream destination, CancellationToken cancellationToken = default)
@@ -99,5 +102,5 @@ public sealed class OdinVaultReplicaStorage(
         response.EnsureSuccessStatusCode();
     }
 
-    private sealed record ReplicaUploadResponse(string Id, string Path, long SizeBytes, string Sha256);
+    private sealed record ReplicaUploadResponse(string Id, string Path, long SizeBytes, string? Sha256);
 }
