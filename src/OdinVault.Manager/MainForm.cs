@@ -36,7 +36,12 @@ internal sealed class MainForm : Form
     private Control? _backupsPage;
     private Control? _storagePage;
     private Control? _restorePage;
+    private Control? _alertsPage;
     private Guid? _currentDetailsDatabaseId;
+    private readonly DataGridView _alertsGrid = new();
+    private readonly ComboBox _alertReadFilter = new();
+    private readonly ComboBox _alertSeverityFilter = new();
+    private AlertsOverviewResponse? _alertsOverview;
     private readonly Label _localStoragePath = new();
     private readonly Label _localStorageFree = new();
     private readonly Label _localStorageStatus = new();
@@ -312,9 +317,9 @@ internal sealed class MainForm : Form
                     break;
                 case "alerts":
                     _pageTitle.Text = "هشدارها";
-                    _contentHost.Controls.Add(BuildPlaceholderPage(
-                        "هشدارها",
-                        "خطاهای بکاپ، فضای کم و وضعیت Replica اینجا نمایش داده می‌شوند."));
+                    _alertsPage ??= BuildAlertsPage();
+                    _contentHost.Controls.Add(_alertsPage);
+                    _ = RefreshAlertsPageAsync();
                     break;
                 case "reports":
                     _pageTitle.Text = "گزارش‌ها";
@@ -1425,6 +1430,273 @@ internal sealed class MainForm : Form
         return root;
     }
 
+    private Control BuildAlertsPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.FromArgb(245, 247, 250)
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var toolbar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(4)
+        };
+
+        var refresh = new Button
+        {
+            Text = "بروزرسانی",
+            AutoSize = true,
+            Height = 36
+        };
+        refresh.Click += async (_, _) => await RefreshAlertsPageAsync();
+
+        var markSelected = new Button
+        {
+            Text = "خوانده شد",
+            AutoSize = true,
+            Height = 36
+        };
+        markSelected.Click += async (_, _) => await MarkSelectedAlertReadAsync();
+
+        var markAll = new Button
+        {
+            Text = "خواندن همه",
+            AutoSize = true,
+            Height = 36
+        };
+        markAll.Click += async (_, _) => await MarkAllAlertsReadAsync();
+
+        _alertReadFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+        _alertReadFilter.Width = 145;
+        _alertReadFilter.Items.AddRange(["همه", "خوانده‌نشده", "خوانده‌شده"]);
+        _alertReadFilter.SelectedIndex = 0;
+        _alertReadFilter.SelectedIndexChanged += (_, _) => ApplyAlertFilters();
+
+        _alertSeverityFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+        _alertSeverityFilter.Width = 140;
+        _alertSeverityFilter.Items.AddRange(["همه شدت‌ها", "بحرانی", "هشدار"]);
+        _alertSeverityFilter.SelectedIndex = 0;
+        _alertSeverityFilter.SelectedIndexChanged += (_, _) => ApplyAlertFilters();
+
+        toolbar.Controls.Add(refresh);
+        toolbar.Controls.Add(markSelected);
+        toolbar.Controls.Add(markAll);
+        toolbar.Controls.Add(_alertReadFilter);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "وضعیت",
+            AutoSize = true,
+            Margin = new Padding(8, 9, 3, 0)
+        });
+        toolbar.Controls.Add(_alertSeverityFilter);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "شدت",
+            AutoSize = true,
+            Margin = new Padding(8, 9, 3, 0)
+        });
+        root.Controls.Add(toolbar, 0, 0);
+
+        ConfigureReadOnlyGrid(_alertsGrid);
+        _alertsGrid.Columns.Clear();
+        _alertsGrid.Columns.Add("Read", "وضعیت");
+        _alertsGrid.Columns.Add("Severity", "شدت");
+        _alertsGrid.Columns.Add("Category", "نوع");
+        _alertsGrid.Columns.Add("Database", "دیتابیس / منبع");
+        _alertsGrid.Columns.Add("Title", "عنوان");
+        _alertsGrid.Columns.Add("Message", "جزئیات");
+        _alertsGrid.Columns.Add("Occurred", "زمان");
+        _alertsGrid.CellDoubleClick += async (_, e) =>
+        {
+            if (e.RowIndex >= 0)
+                await OpenAlertAsync(_alertsGrid.Rows[e.RowIndex]);
+        };
+
+        root.Controls.Add(BuildBackupsSection("Notification Center", _alertsGrid), 0, 1);
+        return root;
+    }
+
+    private async Task RefreshAlertsPageAsync()
+    {
+        try
+        {
+            _alertsOverview = await _api.GetAlertsAsync(includeRead: true);
+            UpdateAlertNavigationBadge(_alertsOverview?.UnreadCount ?? 0);
+            ApplyAlertFilters();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+        }
+    }
+
+    private void ApplyAlertFilters()
+    {
+        if (_alertsOverview is null)
+            return;
+
+        IEnumerable<AlertClientResponse> alerts = _alertsOverview.Alerts;
+
+        alerts = _alertReadFilter.SelectedIndex switch
+        {
+            1 => alerts.Where(x => !x.IsRead),
+            2 => alerts.Where(x => x.IsRead),
+            _ => alerts
+        };
+
+        alerts = _alertSeverityFilter.SelectedIndex switch
+        {
+            1 => alerts.Where(x => string.Equals(x.Severity, "critical", StringComparison.OrdinalIgnoreCase)),
+            2 => alerts.Where(x => string.Equals(x.Severity, "warning", StringComparison.OrdinalIgnoreCase)),
+            _ => alerts
+        };
+
+        _alertsGrid.Rows.Clear();
+        foreach (var alert in alerts
+                     .OrderBy(x => x.IsRead)
+                     .ThenBy(x => x.Severity == "critical" ? 0 : 1)
+                     .ThenByDescending(x => x.OccurredAtUtc))
+        {
+            var rowIndex = _alertsGrid.Rows.Add(
+                alert.IsRead ? "خوانده‌شده" : "جدید",
+                FormatAlertSeverity(alert.Severity),
+                FormatAlertCategory(alert.Category),
+                alert.DatabaseName,
+                alert.Title,
+                alert.Message,
+                FormatDashboardTime(alert.OccurredAtUtc));
+
+            var row = _alertsGrid.Rows[rowIndex];
+            row.Tag = alert;
+
+            if (!alert.IsRead)
+                row.DefaultCellStyle.Font = new Font(_alertsGrid.Font, FontStyle.Bold);
+
+            row.DefaultCellStyle.ForeColor = alert.Severity == "critical"
+                ? Color.FromArgb(155, 50, 50)
+                : Color.FromArgb(145, 95, 25);
+        }
+    }
+
+    private async Task MarkSelectedAlertReadAsync()
+    {
+        if (_alertsGrid.CurrentRow?.Tag is not AlertClientResponse alert)
+        {
+            MessageBox.Show(
+                this,
+                "ابتدا یک هشدار را انتخاب کنید.",
+                "OdinVault",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        if (!alert.IsRead)
+            await _api.MarkAlertsReadAsync([alert.Key]);
+
+        await RefreshAlertsPageAsync();
+    }
+
+    private async Task MarkAllAlertsReadAsync()
+    {
+        if (_alertsOverview is null)
+            return;
+
+        var unreadKeys = _alertsOverview.Alerts
+            .Where(x => !x.IsRead)
+            .Select(x => x.Key)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (unreadKeys.Length == 0)
+            return;
+
+        await _api.MarkAlertsReadAsync(unreadKeys);
+        await RefreshAlertsPageAsync();
+    }
+
+    private async Task OpenAlertAsync(DataGridViewRow row)
+    {
+        if (row.Tag is not AlertClientResponse alert)
+            return;
+
+        if (!alert.IsRead)
+        {
+            try
+            {
+                await _api.MarkAlertsReadAsync([alert.Key]);
+            }
+            catch
+            {
+                // Navigation should still work if acknowledgement cannot be persisted.
+            }
+        }
+
+        switch (alert.Category)
+        {
+            case "backup":
+            case "verify":
+            case "job":
+                ShowPage("backups");
+                break;
+            case "replica":
+            case "storage":
+                ShowPage("storage");
+                break;
+            case "protection":
+                if (alert.DatabaseId is Guid databaseId)
+                    await ShowDatabaseDetailsAsync(databaseId);
+                else
+                    ShowPage("databases");
+                break;
+            default:
+                ShowPage("dashboard");
+                break;
+        }
+
+        _ = RefreshAllAsync();
+    }
+
+    private void UpdateAlertNavigationBadge(int unreadCount)
+    {
+        if (!_navigationButtons.TryGetValue("alerts", out var button))
+            return;
+
+        button.Text = unreadCount > 0
+            ? $"هشدارها  ({unreadCount})"
+            : "هشدارها";
+    }
+
+    private static string FormatAlertSeverity(string severity) =>
+        severity.Equals("critical", StringComparison.OrdinalIgnoreCase)
+            ? "بحرانی"
+            : severity.Equals("warning", StringComparison.OrdinalIgnoreCase)
+                ? "هشدار"
+                : "اطلاع";
+
+    private static string FormatAlertCategory(string category) => category switch
+    {
+        "backup" => "بکاپ",
+        "verify" => "Verify",
+        "replica" => "Replica",
+        "job" => "Job",
+        "protection" => "حفاظت",
+        "storage" => "فضا",
+        "health" => "Agent",
+        _ => category
+    };
+
     private Control BuildPlaceholderPage(string title, string description)
     {
         var card = new Panel
@@ -1601,9 +1873,10 @@ internal sealed class MainForm : Form
             var dashboardTask = _api.GetDashboardAsync();
             var databasesTask = _api.GetDatabasesAsync();
             var overviewsTask = _api.GetDatabaseOverviewsAsync();
+            var alertsTask = _api.GetAlertsAsync(includeRead: false);
             var chartDays = _chartRange.SelectedIndex == 0 ? 7 : 30;
             var statsTask = _api.GetDashboardStatsAsync(chartDays);
-            await Task.WhenAll(dashboardTask, databasesTask, overviewsTask, statsTask);
+            await Task.WhenAll(dashboardTask, databasesTask, overviewsTask, statsTask, alertsTask);
 
             var dashboard = await dashboardTask;
             if (dashboard is not null)
@@ -1620,6 +1893,9 @@ internal sealed class MainForm : Form
             var stats = await statsTask;
             if (stats is not null)
                 RenderDashboardCharts(stats);
+
+            var alertSummary = await alertsTask;
+            UpdateAlertNavigationBadge(alertSummary?.UnreadCount ?? 0);
 
             var databases = await databasesTask;
             var overviews = (await overviewsTask).ToDictionary(x => x.Id);
