@@ -135,19 +135,37 @@ public static class AlertEndpoints
                 .Select(x => x.Id)
                 .ToListAsync(ct);
 
-            var protectedIds = await db.BackupRecords
+            var locallyProtectedIds = await db.BackupRecords
                 .AsNoTracking()
                 .Where(x => enabledDatabaseIds.Contains(x.DatabaseEndpointId) &&
                             x.Status == BackupStatus.Succeeded &&
-                            (x.LocalFileAvailable ||
-                             db.BackupReplicas.Any(replica =>
-                                 replica.BackupRecordId == x.Id &&
-                                 replica.Status == ReplicaStatus.Succeeded)))
+                            x.LocalFileAvailable)
                 .Select(x => x.DatabaseEndpointId)
                 .Distinct()
                 .ToListAsync(ct);
 
-            foreach (var databaseId in enabledDatabaseIds.Except(protectedIds))
+            var replicaProtectedIds = await (
+                from backup in db.BackupRecords.AsNoTracking()
+                join replica in db.BackupReplicas.AsNoTracking()
+                    on backup.Id equals replica.BackupRecordId
+                join target in db.StorageTargets.AsNoTracking()
+                    on replica.StorageTargetId equals target.Id
+                where enabledDatabaseIds.Contains(backup.DatabaseEndpointId) &&
+                      backup.Status == BackupStatus.Succeeded &&
+                      replica.Status == ReplicaStatus.Succeeded &&
+                      (target.Type != StorageProviderType.OdinVaultReplica ||
+                       (replica.ContentHashSha256 != null &&
+                        replica.ContentHashSha256.Length == 64))
+                select backup.DatabaseEndpointId)
+                .Distinct()
+                .ToListAsync(ct);
+
+            var protectedIds = locallyProtectedIds
+                .Concat(replicaProtectedIds)
+                .Distinct()
+                .ToHashSet();
+
+            foreach (var databaseId in enabledDatabaseIds.Where(x => !protectedIds.Contains(x)))
             {
                 alerts.Add(new AlertItem(
                     $"db-unprotected:{databaseId:N}",
