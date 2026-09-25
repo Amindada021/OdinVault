@@ -1,5 +1,8 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using Cronos;
 using Microsoft.EntityFrameworkCore;
+using OdinVault.Core;
 using OdinVault.Persistence;
 
 namespace OdinVault.Agent;
@@ -18,7 +21,7 @@ public sealed class BackupScheduler(
         {
             try
             {
-                await RunDueBackupsAsync(stoppingToken);
+                await EnqueueDueBackupsAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -33,7 +36,7 @@ public sealed class BackupScheduler(
         }
     }
 
-    private async Task RunDueBackupsAsync(CancellationToken cancellationToken)
+    private async Task EnqueueDueBackupsAsync(CancellationToken cancellationToken)
     {
         List<Guid> policyIds;
         await using (var scope = scopeFactory.CreateAsyncScope())
@@ -49,7 +52,7 @@ public sealed class BackupScheduler(
         {
             try
             {
-                await RunPolicyIfDueAsync(policyId, cancellationToken);
+                await EnqueuePolicyIfDueAsync(policyId, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -62,11 +65,11 @@ public sealed class BackupScheduler(
         }
     }
 
-    private async Task RunPolicyIfDueAsync(Guid policyId, CancellationToken cancellationToken)
+    private async Task EnqueuePolicyIfDueAsync(Guid policyId, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OdinVaultDbContext>();
-        var orchestrator = scope.ServiceProvider.GetRequiredService<BackupOrchestrator>();
+        var jobs = scope.ServiceProvider.GetRequiredService<IBackupJobStore>();
 
         var policy = await db.BackupPolicies.FirstOrDefaultAsync(x => x.Id == policyId, cancellationToken);
         if (policy is null || !policy.IsEnabled || string.IsNullOrWhiteSpace(policy.ScheduleCron))
@@ -101,22 +104,68 @@ public sealed class BackupScheduler(
         if (policy.LastScheduledRunUtc.HasValue && policy.LastScheduledRunUtc.Value >= occurrenceUtc)
             return;
 
-        // Persist the cron slot before running so a failed backup is not duplicated every 30 seconds.
+        var requestId = CreateScheduledRequestId(policy.Id, occurrenceUtc);
+        var enqueue = await jobs.EnqueueAsync(requestId, policy.DatabaseEndpointId, cancellationToken);
+
+        if (enqueue.Status == BackupJobEnqueueStatus.ActiveConflict)
+        {
+            logger.LogInformation(
+                "Scheduled backup for database {DatabaseId} is still due for cron slot {OccurrenceUtc}, but another job {JobId} is active.",
+                policy.DatabaseEndpointId,
+                occurrenceUtc,
+                enqueue.ConflictingJobId);
+            return;
+        }
+
+        if (enqueue.Status == BackupJobEnqueueStatus.RequestConflict)
+        {
+            logger.LogError(
+                "Scheduled request id collision for policy {PolicyId}, database {DatabaseId}, cron slot {OccurrenceUtc}.",
+                policy.Id,
+                policy.DatabaseEndpointId,
+                occurrenceUtc);
+            return;
+        }
+
+        if (enqueue.Job is null)
+        {
+            logger.LogError(
+                "Scheduled backup enqueue returned {Status} without a job for policy {PolicyId}.",
+                enqueue.Status,
+                policy.Id);
+            return;
+        }
+
+        // Created means this run persisted the job. Existing means a previous run already
+        // persisted this exact cron slot, which makes restart between enqueue and this save safe.
+        if (enqueue.Status is not BackupJobEnqueueStatus.Created and not BackupJobEnqueueStatus.Existing)
+        {
+            logger.LogWarning(
+                "Scheduled backup cron slot {OccurrenceUtc} was not acknowledged. Enqueue status: {Status}.",
+                occurrenceUtc,
+                enqueue.Status);
+            return;
+        }
+
         policy.LastScheduledRunUtc = occurrenceUtc;
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "Running scheduled backup for database {DatabaseId}. Cron slot: {OccurrenceUtc}.",
+            "Scheduled backup queued for database {DatabaseId}. Cron slot: {OccurrenceUtc}; Job: {JobId}; Enqueue: {Status}.",
             policy.DatabaseEndpointId,
-            occurrenceUtc);
+            occurrenceUtc,
+            enqueue.Job.Id,
+            enqueue.Status);
+    }
 
-        try
-        {
-            await orchestrator.RunNowAsync(policy.DatabaseEndpointId, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Scheduled backup failed for database {DatabaseId}.", policy.DatabaseEndpointId);
-        }
+    private static Guid CreateScheduledRequestId(Guid policyId, DateTime occurrenceUtc)
+    {
+        Span<byte> input = stackalloc byte[24];
+        policyId.TryWriteBytes(input[..16]);
+        BinaryPrimitives.WriteInt64LittleEndian(input[16..], occurrenceUtc.ToUniversalTime().Ticks);
+
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.HashData(input, hash);
+        return new Guid(hash[..16]);
     }
 }
