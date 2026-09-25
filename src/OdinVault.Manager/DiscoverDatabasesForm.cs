@@ -110,6 +110,27 @@ internal sealed class DiscoverDatabasesForm : Form
             UpdateAddButtonState();
         };
 
+        _grid.CellClick += (_, e) =>
+        {
+            if (e.RowIndex < 0)
+                return;
+
+            var row = _grid.Rows[e.RowIndex];
+            if (row.Tag is not DiscoveredDatabaseResponse item ||
+                item.IsSystem ||
+                item.IsRegistered ||
+                !item.CanBackup)
+                return;
+
+            // Clicking the checkbox itself is handled by WinForms.
+            if (e.ColumnIndex == _grid.Columns["Selected"].Index)
+                return;
+
+            var cell = row.Cells["Selected"];
+            cell.Value = !Convert.ToBoolean(cell.Value ?? false);
+            UpdateAddButtonState();
+        };
+
         _grid.Columns.Add(new DataGridViewCheckBoxColumn
         {
             Name = "Selected",
