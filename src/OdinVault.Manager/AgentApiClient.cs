@@ -28,6 +28,21 @@ internal sealed class AgentApiClient : IDisposable
         return await response.Content.ReadFromJsonAsync<HealthResponse>(JsonOptions, cancellationToken);
     }
 
+    public async Task<DashboardStatsResponse?> GetDashboardStatsAsync(
+        int days = 30,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedDays = days == 7 ? 7 : 30;
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Get,
+            $"api/dashboard/stats?days={normalizedDays}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<DashboardStatsResponse>(
+            JsonOptions,
+            cancellationToken);
+    }
+
     public async Task<DashboardResponse?> GetDashboardAsync(CancellationToken cancellationToken = default)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Get, "api/dashboard");
@@ -254,6 +269,25 @@ internal sealed class AgentApiClient : IDisposable
 }
 
 internal sealed record HealthResponse(string? Service, string? Status, DateTime Utc);
+
+internal sealed record DashboardStatsResponse(
+    int RangeDays,
+    DateTime FromUtc,
+    DateTime ToUtc,
+    IReadOnlyList<DashboardDailyStatsResponse> Daily,
+    IReadOnlyList<DashboardDatabaseSizeResponse> DatabaseSizes);
+
+internal sealed record DashboardDailyStatsResponse(
+    DateTime DateUtc,
+    int Succeeded,
+    int Failed,
+    long TotalSizeBytes,
+    double? AverageDurationSeconds);
+
+internal sealed record DashboardDatabaseSizeResponse(
+    Guid DatabaseId,
+    string DatabaseName,
+    long? SizeBytes);
 
 internal sealed record DashboardResponse(
     DateTime Utc,
