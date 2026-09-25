@@ -59,6 +59,39 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
             catch (DbUpdateException ex) when (IsQueueCapacityConflict(ex))
             {
                 db.Entry(job).State = EntityState.Detached;
+
+                var duplicateAfterCapacityConflict = await db.BackupJobs.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.RequestId == requestId, cancellationToken);
+                if (duplicateAfterCapacityConflict is not null)
+                {
+                    return duplicateAfterCapacityConflict.DatabaseEndpointId == databaseEndpointId
+                        ? new BackupJobEnqueueResult(
+                            BackupJobEnqueueStatus.Existing,
+                            Snapshot(duplicateAfterCapacityConflict))
+                        : new BackupJobEnqueueResult(
+                            BackupJobEnqueueStatus.RequestConflict,
+                            Snapshot(duplicateAfterCapacityConflict),
+                            duplicateAfterCapacityConflict.Id);
+                }
+
+                var activeAfterCapacityConflict = await db.BackupJobs.AsNoTracking()
+                    .Where(x => x.DatabaseEndpointId == databaseEndpointId &&
+                                (x.Status == BackupJobStatus.Queued || x.Status == BackupJobStatus.Running))
+                    .OrderBy(x => x.CreatedAtUtc)
+                    .ThenBy(x => x.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (activeAfterCapacityConflict is not null)
+                {
+                    return activeAfterCapacityConflict.RequestId == requestId
+                        ? new BackupJobEnqueueResult(
+                            BackupJobEnqueueStatus.Existing,
+                            Snapshot(activeAfterCapacityConflict))
+                        : new BackupJobEnqueueResult(
+                            BackupJobEnqueueStatus.ActiveConflict,
+                            Snapshot(activeAfterCapacityConflict),
+                            activeAfterCapacityConflict.Id);
+                }
+
                 return new BackupJobEnqueueResult(BackupJobEnqueueStatus.QueueFull, null);
             }
             catch (DbUpdateException ex) when (IsEnqueueUniqueConflict(ex))
