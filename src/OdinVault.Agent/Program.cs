@@ -56,6 +56,7 @@ builder.Services
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
 
 builder.Services.AddScoped<ISecretProtector, SecretProtector>();
+builder.Services.AddScoped<IBackupJobStore, SqliteBackupJobStore>();
 builder.Services.AddScoped<SqlServerDiscoveryService>();
 builder.Services.AddScoped<IDatabaseBackupProvider, SqlServerBackupProvider>();
 builder.Services.AddSingleton<IBackupStorageProvider>(_ => new LocalBackupStorage(storageDirectory));

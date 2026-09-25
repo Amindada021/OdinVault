@@ -11,6 +11,7 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
     public DbSet<StorageTarget> StorageTargets => Set<StorageTarget>();
     public DbSet<DatabaseStorageTarget> DatabaseStorageTargets => Set<DatabaseStorageTarget>();
     public DbSet<BackupReplica> BackupReplicas => Set<BackupReplica>();
+    public DbSet<BackupJob> BackupJobs => Set<BackupJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +70,31 @@ public sealed class OdinVaultDbContext(DbContextOptions<OdinVaultDbContext> opti
             entity.HasIndex(x => new { x.BackupRecordId, x.StorageTargetId }).IsUnique();
             entity.HasIndex(x => new { x.StorageTargetId, x.StartedAtUtc });
             entity.HasIndex(x => new { x.Status, x.NextRetryAtUtc });
+        });
+
+        modelBuilder.Entity<BackupJob>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Stage).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.ErrorCode).HasMaxLength(100);
+            entity.Property(x => x.ErrorMessage).HasMaxLength(2000);
+            entity.HasIndex(x => x.RequestId).IsUnique();
+            entity.HasIndex(x => x.DatabaseEndpointId)
+                .IsUnique()
+                .HasFilter("\"Status\" IN (0, 1)");
+            entity.HasIndex(x => new { x.Status, x.CreatedAtUtc, x.Id });
+            entity.HasIndex(x => x.BackupRecordId);
+            entity.HasOne<DatabaseEndpoint>()
+                .WithMany()
+                .HasForeignKey(x => x.DatabaseEndpointId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<BackupRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.BackupRecordId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_BackupJobs_Percent",
+                "\"Percent\" IS NULL OR (\"Percent\" >= 0 AND \"Percent\" <= 100)"));
         });
     }
 }
