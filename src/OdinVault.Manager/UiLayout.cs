@@ -3,6 +3,7 @@ namespace OdinVault.Manager;
 internal static class UiLayout
 {
     private static string _currentLanguage = "fa";
+    private static readonly Dictionary<TableLayoutPanel, TableLayoutSnapshot> TableSnapshots = new();
 
     public static string CurrentLanguage => _currentLanguage;
 
@@ -38,6 +39,9 @@ internal static class UiLayout
         if (control is Form form)
             form.RightToLeftLayout = rtl;
 
+        if (control is TableLayoutPanel table)
+            ApplyTableDirection(table, rtl);
+
         if (control is FlowLayoutPanel flow)
         {
             if (flow.FlowDirection is FlowDirection.LeftToRight or FlowDirection.RightToLeft)
@@ -63,6 +67,61 @@ internal static class UiLayout
             ApplyRecursive(child, rtl, language, translateText);
     }
 
+    private static void ApplyTableDirection(TableLayoutPanel table, bool rtl)
+    {
+        if (table.ColumnCount <= 1)
+            return;
+
+        if (!TableSnapshots.TryGetValue(table, out var snapshot))
+        {
+            snapshot = new TableLayoutSnapshot(
+                table.ColumnCount,
+                table.ColumnStyles
+                    .Cast<ColumnStyle>()
+                    .Select(x => new ColumnStyleSnapshot(x.SizeType, x.Width))
+                    .ToArray(),
+                table.Controls
+                    .Cast<Control>()
+                    .ToDictionary(
+                        child => child,
+                        child => new CellSnapshot(
+                            table.GetColumn(child),
+                            Math.Max(1, table.GetColumnSpan(child)))));
+
+            TableSnapshots[table] = snapshot;
+        }
+
+        if (snapshot.ColumnCount != table.ColumnCount)
+            return;
+
+        var styleCount = Math.Min(table.ColumnStyles.Count, snapshot.ColumnStyles.Length);
+        for (var target = 0; target < styleCount; target++)
+        {
+            var source = rtl ? styleCount - 1 - target : target;
+            var original = snapshot.ColumnStyles[source];
+            table.ColumnStyles[target].SizeType = original.SizeType;
+            table.ColumnStyles[target].Width = original.Width;
+        }
+
+        foreach (var pair in snapshot.Cells)
+        {
+            var child = pair.Key;
+            if (!table.Controls.Contains(child))
+                continue;
+
+            var original = pair.Value;
+            var targetColumn = rtl
+                ? table.ColumnCount - original.Column - original.ColumnSpan
+                : original.Column;
+
+            if (targetColumn < 0 || targetColumn >= table.ColumnCount)
+                continue;
+
+            table.SetColumn(child, targetColumn);
+            table.SetColumnSpan(child, original.ColumnSpan);
+        }
+    }
+
     private static ContentAlignment MirrorHorizontalAlignment(ContentAlignment alignment, bool rtl)
     {
         if (rtl)
@@ -84,4 +143,13 @@ internal static class UiLayout
             _ => alignment
         };
     }
+
+    private sealed record TableLayoutSnapshot(
+        int ColumnCount,
+        ColumnStyleSnapshot[] ColumnStyles,
+        Dictionary<Control, CellSnapshot> Cells);
+
+    private sealed record ColumnStyleSnapshot(SizeType SizeType, float Width);
+
+    private sealed record CellSnapshot(int Column, int ColumnSpan);
 }
