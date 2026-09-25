@@ -13,46 +13,11 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
         if (requestId == Guid.Empty) throw new ArgumentException("RequestId cannot be empty.", nameof(requestId));
         if (databaseEndpointId == Guid.Empty) throw new ArgumentException("DatabaseEndpointId cannot be empty.", nameof(databaseEndpointId));
 
-        var existing = await db.BackupJobs.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.RequestId == requestId, cancellationToken);
-        if (existing is not null)
-        {
-            return existing.DatabaseEndpointId == databaseEndpointId
-                ? new BackupJobEnqueueResult(BackupJobEnqueueStatus.Existing, Snapshot(existing))
-                : new BackupJobEnqueueResult(BackupJobEnqueueStatus.RequestConflict, Snapshot(existing), existing.Id);
-        }
+        DbUpdateException? lastUniqueConflict = null;
 
-        var active = await db.BackupJobs.AsNoTracking()
-            .Where(x => x.DatabaseEndpointId == databaseEndpointId &&
-                        (x.Status == BackupJobStatus.Queued || x.Status == BackupJobStatus.Running))
-            .OrderBy(x => x.CreatedAtUtc)
-            .ThenBy(x => x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (active is not null)
-            return new BackupJobEnqueueResult(BackupJobEnqueueStatus.ActiveConflict, Snapshot(active), active.Id);
-
-        var now = DateTime.UtcNow;
-        var job = new BackupJob
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            RequestId = requestId,
-            DatabaseEndpointId = databaseEndpointId,
-            Status = BackupJobStatus.Queued,
-            Stage = "queued",
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now
-        };
-
-        db.BackupJobs.Add(job);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            return new BackupJobEnqueueResult(BackupJobEnqueueStatus.Created, Snapshot(job));
-        }
-        catch (DbUpdateException)
-        {
-            db.Entry(job).State = EntityState.Detached;
-
-            existing = await db.BackupJobs.AsNoTracking()
+            var existing = await db.BackupJobs.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.RequestId == requestId, cancellationToken);
             if (existing is not null)
             {
@@ -61,17 +26,66 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                     : new BackupJobEnqueueResult(BackupJobEnqueueStatus.RequestConflict, Snapshot(existing), existing.Id);
             }
 
-            active = await db.BackupJobs.AsNoTracking()
+            var active = await db.BackupJobs.AsNoTracking()
                 .Where(x => x.DatabaseEndpointId == databaseEndpointId &&
                             (x.Status == BackupJobStatus.Queued || x.Status == BackupJobStatus.Running))
                 .OrderBy(x => x.CreatedAtUtc)
                 .ThenBy(x => x.Id)
                 .FirstOrDefaultAsync(cancellationToken);
             if (active is not null)
-                return new BackupJobEnqueueResult(BackupJobEnqueueStatus.ActiveConflict, Snapshot(active), active.Id);
+            {
+                return active.RequestId == requestId
+                    ? new BackupJobEnqueueResult(BackupJobEnqueueStatus.Existing, Snapshot(active))
+                    : new BackupJobEnqueueResult(BackupJobEnqueueStatus.ActiveConflict, Snapshot(active), active.Id);
+            }
 
-            throw;
+            var now = DateTime.UtcNow;
+            var job = new BackupJob
+            {
+                RequestId = requestId,
+                DatabaseEndpointId = databaseEndpointId,
+                Status = BackupJobStatus.Queued,
+                Stage = "queued",
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            };
+
+            db.BackupJobs.Add(job);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return new BackupJobEnqueueResult(BackupJobEnqueueStatus.Created, Snapshot(job));
+            }
+            catch (DbUpdateException ex) when (IsEnqueueUniqueConflict(ex))
+            {
+                db.Entry(job).State = EntityState.Detached;
+                lastUniqueConflict = ex;
+            }
         }
+
+        var duplicate = await db.BackupJobs.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.RequestId == requestId, cancellationToken);
+        if (duplicate is not null)
+        {
+            return duplicate.DatabaseEndpointId == databaseEndpointId
+                ? new BackupJobEnqueueResult(BackupJobEnqueueStatus.Existing, Snapshot(duplicate))
+                : new BackupJobEnqueueResult(BackupJobEnqueueStatus.RequestConflict, Snapshot(duplicate), duplicate.Id);
+        }
+
+        var conflicting = await db.BackupJobs.AsNoTracking()
+            .Where(x => x.DatabaseEndpointId == databaseEndpointId &&
+                        (x.Status == BackupJobStatus.Queued || x.Status == BackupJobStatus.Running))
+            .OrderBy(x => x.CreatedAtUtc)
+            .ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (conflicting is not null)
+        {
+            return conflicting.RequestId == requestId
+                ? new BackupJobEnqueueResult(BackupJobEnqueueStatus.Existing, Snapshot(conflicting))
+                : new BackupJobEnqueueResult(BackupJobEnqueueStatus.ActiveConflict, Snapshot(conflicting), conflicting.Id);
+        }
+
+        throw lastUniqueConflict ?? new InvalidOperationException("Could not resolve backup job enqueue conflict.");
     }
 
     public async Task<BackupJobSnapshot?> GetAsync(
@@ -101,6 +115,8 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
     {
         for (var attempt = 0; attempt < 8; attempt++)
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
             var candidateId = await db.BackupJobs.AsNoTracking()
                 .Where(x => x.Status == BackupJobStatus.Queued)
                 .OrderBy(x => x.CreatedAtUtc)
@@ -109,7 +125,10 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (candidateId is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
                 return new BackupJobClaimResult(BackupJobMutationStatus.NotFound, null);
+            }
 
             var token = Guid.NewGuid();
             var now = DateTime.UtcNow;
@@ -123,12 +142,18 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                     .SetProperty(x => x.UpdatedAtUtc, now),
                     cancellationToken);
 
-            if (changed == 1)
+            if (changed == 0)
             {
-                var claimed = await db.BackupJobs.AsNoTracking()
-                    .SingleAsync(x => x.Id == candidateId.Value, cancellationToken);
-                return new BackupJobClaimResult(BackupJobMutationStatus.Updated, Snapshot(claimed));
+                await transaction.RollbackAsync(cancellationToken);
+                continue;
             }
+
+            var claimed = await db.BackupJobs.AsNoTracking()
+                .SingleAsync(x => x.Id == candidateId.Value, cancellationToken);
+            var snapshot = Snapshot(claimed);
+
+            await transaction.CommitAsync(cancellationToken);
+            return new BackupJobClaimResult(BackupJobMutationStatus.Updated, snapshot);
         }
 
         return new BackupJobClaimResult(BackupJobMutationStatus.StateConflict, null);
@@ -203,20 +228,15 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
         var validation = ValidateRunningOwner(existing, executionToken);
         if (validation is not null) return validation;
 
-        var backup = await db.BackupRecords.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == backupRecordId, cancellationToken);
-        if (backup is null ||
-            backup.Status != BackupStatus.Succeeded ||
-            backup.DatabaseEndpointId != existing!.DatabaseEndpointId)
-        {
-            return new BackupJobMutationResult(BackupJobMutationStatus.ValidationConflict, Snapshot(existing));
-        }
-
         var now = DateTime.UtcNow;
         var changed = await db.BackupJobs
             .Where(x => x.Id == id &&
                         x.Status == BackupJobStatus.Running &&
-                        x.ExecutionToken == executionToken)
+                        x.ExecutionToken == executionToken &&
+                        db.BackupRecords.Any(backup =>
+                            backup.Id == backupRecordId &&
+                            backup.Status == BackupStatus.Succeeded &&
+                            backup.DatabaseEndpointId == x.DatabaseEndpointId))
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, BackupJobStatus.Succeeded)
                 .SetProperty(x => x.Stage, "complete")
@@ -228,9 +248,18 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                 .SetProperty(x => x.UpdatedAtUtc, now),
                 cancellationToken);
 
-        return changed == 1
-            ? await UpdatedAsync(id, cancellationToken)
-            : await CurrentConflictAsync(id, executionToken, cancellationToken);
+        if (changed == 1)
+            return await UpdatedAsync(id, cancellationToken);
+
+        var current = await GetEntityAsync(id, cancellationToken);
+        if (current is null)
+            return new BackupJobMutationResult(BackupJobMutationStatus.NotFound, null);
+        if (current.Status != BackupJobStatus.Running)
+            return new BackupJobMutationResult(BackupJobMutationStatus.StateConflict, Snapshot(current));
+        if (current.ExecutionToken != executionToken)
+            return new BackupJobMutationResult(BackupJobMutationStatus.OwnershipConflict, Snapshot(current));
+
+        return new BackupJobMutationResult(BackupJobMutationStatus.ValidationConflict, Snapshot(current));
     }
 
     public Task<BackupJobMutationResult> FailAsync(
@@ -317,6 +346,19 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
         if (job.ExecutionToken != executionToken)
             return new BackupJobMutationResult(BackupJobMutationStatus.OwnershipConflict, Snapshot(job));
         return null;
+    }
+
+    private static bool IsEnqueueUniqueConflict(DbUpdateException exception)
+    {
+        if (exception.InnerException is not Microsoft.Data.Sqlite.SqliteException sqlite ||
+            sqlite.SqliteErrorCode != 19 ||
+            sqlite.SqliteExtendedErrorCode != 2067)
+        {
+            return false;
+        }
+
+        return sqlite.Message.Contains("BackupJobs.RequestId", StringComparison.OrdinalIgnoreCase) ||
+               sqlite.Message.Contains("BackupJobs.DatabaseEndpointId", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ValidateStage(string stage)
