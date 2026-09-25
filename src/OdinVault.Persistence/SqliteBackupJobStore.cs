@@ -223,7 +223,7 @@ public sealed class SqliteBackupJobStore(OdinVaultDbContext db) : IBackupJobStor
                         x.ExecutionToken == executionToken &&
                         db.BackupRecords.Any(backup =>
                             backup.Id == backupRecordId &&
-                            backup.Status == BackupStatus.Succeeded &&
+                            (backup.Status == BackupStatus.Running || backup.Status == BackupStatus.Succeeded) &&
                             backup.DatabaseEndpointId == x.DatabaseEndpointId))
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Stage, stage)

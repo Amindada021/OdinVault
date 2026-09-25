@@ -12,7 +12,11 @@ public sealed class BackupOrchestrator(
     StorageReplicationService replicationService,
     ILogger<BackupOrchestrator> logger)
 {
-    public async Task<BackupRecord> RunNowAsync(Guid databaseId, CancellationToken cancellationToken = default, IProgress<BackupProgress>? progress = null)
+    public async Task<BackupRecord> RunNowAsync(
+        Guid databaseId,
+        CancellationToken cancellationToken = default,
+        IProgress<BackupProgress>? progress = null,
+        Func<BackupRecord, CancellationToken, Task>? onRecordCreated = null)
     {
         var endpoint = await db.DatabaseEndpoints.FirstOrDefaultAsync(x => x.Id == databaseId, cancellationToken)
             ?? throw new KeyNotFoundException("Database endpoint was not found.");
@@ -64,6 +68,9 @@ public sealed class BackupOrchestrator(
         BackupExecutionResult result;
         try
         {
+            if (onRecordCreated is not null)
+                await onRecordCreated(record, cancellationToken);
+
             result = await provider.CreateBackupAsync(
                 new BackupExecutionRequest(endpoint.Id, connection, policy.BackupDirectory, policy.VerifyAfterBackup, progress),
                 cancellationToken);

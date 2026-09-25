@@ -58,6 +58,7 @@ public sealed class BackupJobRecoveryService(
 
         var recoveredSucceeded = 0;
         var interrupted = 0;
+        var recoveredBackupIds = new List<Guid>();
 
         foreach (var job in runningJobs)
         {
@@ -73,6 +74,7 @@ public sealed class BackupJobRecoveryService(
                 job.ErrorCode = null;
                 job.ErrorMessage = null;
                 recoveredSucceeded++;
+                recoveredBackupIds.Add(backup.Id);
                 continue;
             }
 
@@ -83,6 +85,44 @@ public sealed class BackupJobRecoveryService(
             job.ErrorCode = "agent_restarted";
             job.ErrorMessage = "اجرای قبلی با راه‌اندازی مجدد Agent متوقف شد؛ در صورت نیاز بکاپ را دوباره اجرا کنید.";
             interrupted++;
+        }
+
+        foreach (var backupId in recoveredBackupIds.Distinct())
+        {
+            var backup = successfulLinkedBackups[backupId];
+            var requiredTargetIds = await (
+                from link in db.DatabaseStorageTargets
+                join target in db.StorageTargets on link.StorageTargetId equals target.Id
+                where link.DatabaseEndpointId == backup.DatabaseEndpointId &&
+                      link.IsEnabled &&
+                      target.IsEnabled
+                select target.Id)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            if (requiredTargetIds.Count == 0)
+                continue;
+
+            var existingTargetIds = await db.BackupReplicas
+                .Where(x => x.BackupRecordId == backupId &&
+                            requiredTargetIds.Contains(x.StorageTargetId))
+                .Select(x => x.StorageTargetId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var targetId in requiredTargetIds.Except(existingTargetIds))
+            {
+                db.BackupReplicas.Add(new BackupReplica
+                {
+                    BackupRecordId = backupId,
+                    StorageTargetId = targetId,
+                    Status = ReplicaStatus.Failed,
+                    Error = "Replication was not confirmed before the Agent restarted.",
+                    RetryCount = 0,
+                    NextRetryAtUtc = now,
+                    StartedAtUtc = now,
+                    CompletedAtUtc = now
+                });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);

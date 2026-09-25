@@ -51,7 +51,23 @@ public sealed class BackupJobs(
                 var backup = await orchestrator.RunNowAsync(
                     job.DatabaseEndpointId,
                     stoppingToken,
-                    progress);
+                    progress,
+                    async (record, ct) =>
+                    {
+                        await using var linkScope = scopes.CreateAsyncScope();
+                        var linkStore = linkScope.ServiceProvider.GetRequiredService<IBackupJobStore>();
+                        var linked = await linkStore.AttachBackupRecordAsync(
+                            job.Id,
+                            executionToken,
+                            record.Id,
+                            "backup",
+                            0,
+                            ct);
+
+                        if (linked.Status != BackupJobMutationStatus.Updated)
+                            throw new InvalidOperationException(
+                                $"Could not durably link backup record {record.Id} to job {job.Id}: {linked.Status}.");
+                    });
 
                 await progress.FlushAsync();
 
@@ -276,7 +292,9 @@ public static class BackupJobEndpoints
         if (job.BackupRecordId is Guid backupRecordId)
         {
             backup = await db.BackupRecords.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == backupRecordId, cancellationToken);
+                .FirstOrDefaultAsync(
+                    x => x.Id == backupRecordId && x.Status == BackupStatus.Succeeded,
+                    cancellationToken);
         }
 
         return new
