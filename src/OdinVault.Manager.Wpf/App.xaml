@@ -6,6 +6,7 @@
  <Application.Resources>
   <ResourceDictionary>
    <infra:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+   <BooleanToVisibilityConverter x:Key="InverseBoolToVisibility"/>
    <ResourceDictionary.MergedDictionaries>
     <ResourceDictionary Source="Themes/Light.xaml"/>
     <ResourceDictionary Source="Themes/Controls.xaml"/>
