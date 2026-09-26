@@ -6,6 +6,7 @@ namespace OdinVault.Manager.Wpf.ViewModels;
 internal sealed class MainViewModel : ObservableObject, IDisposable
 {
  readonly AgentDashboardClient client=new();
+ public AgentDashboardClient Client=>client;
  string agentStatus="در حال بررسی…",lastRefresh="—",protectedValue="—",failedValue="—",activeValue="—",storageValue="—";
  public string AgentStatus{get=>agentStatus;private set=>Set(ref agentStatus,value);}
  public string LastRefresh{get=>lastRefresh;private set=>Set(ref lastRefresh,value);}
