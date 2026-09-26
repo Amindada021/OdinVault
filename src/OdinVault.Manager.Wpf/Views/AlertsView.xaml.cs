@@ -1,1 +1,1 @@
-using System.Windows.Controls;namespace OdinVault.Manager.Wpf.Views;public partial class AlertsView:UserControl{public AlertsView(){InitializeComponent();}}
+using System.Windows.Controls;namespace OdinVault.Manager.Wpf.Views;public partial class AlertsView:System.Windows.Controls.UserControl{public AlertsView(){InitializeComponent();}}
