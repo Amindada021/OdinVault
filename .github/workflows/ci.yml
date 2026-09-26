@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -110,8 +114,11 @@ jobs:
 
   android-mobile:
     if: github.event_name != 'pull_request'
-    needs: [build, windows-installer]
+    needs: [build]
     runs-on: ubuntu-latest
+    outputs:
+      manager_version: ${{ steps.versions.outputs.manager_version }}
+      mobile_version: ${{ steps.versions.outputs.mobile_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -221,15 +228,25 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  attach-android-mobile:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [android-mobile, windows-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: OdinVault-Mobile-v${{ needs.android-mobile.outputs.mobile_version }}
+
       - name: Attach Android APK to OdinVault Release
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          TAG="v${{ steps.versions.outputs.manager_version }}"
-          APK="OdinVault-Mobile-v${{ steps.versions.outputs.mobile_version }}.apk"
+          TAG="v${{ needs.android-mobile.outputs.manager_version }}"
+          APK="OdinVault-Mobile-v${{ needs.android-mobile.outputs.mobile_version }}.apk"
           SUM="$APK.sha256"
 
           gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null
           gh release upload "$TAG" "$APK" "$SUM" --clobber --repo "${{ github.repository }}"
+
