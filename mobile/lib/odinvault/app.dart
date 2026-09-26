@@ -152,6 +152,7 @@ class _ServersPageState extends State<ServersPage> {
                     if (!mounted) return;
                     setState(() => _monitoringEnabled = value);
                   } catch (e) {
+                    if (!context.mounted) return;
                     setDialogState(() => enabled = previous);
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -636,7 +637,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                             : const Icon(Icons.circle, size: 10),
                         onTap: () async {
                           await MonitoringService.markHistoryRead(item.id);
-                          if (!mounted) return;
+                          if (!context.mounted) return;
                           Navigator.pop(
                             context,
                             OdinVaultNotificationTarget(
@@ -3512,14 +3513,14 @@ class _BackupTileState extends State<BackupTile> {
                       try {
                         await widget.api.retryReplication(backup.id);
                         await load();
-                        if (!mounted) return;
+                        if (!mounted || !context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('ارسال مجدد به مقصدها انجام شد.'),
                           ),
                         );
                       } catch (e) {
-                        if (!mounted) return;
+                        if (!mounted || !context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
