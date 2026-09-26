@@ -437,10 +437,10 @@ class OdinVaultApiException implements Exception {
       final serverMessage =
           data is Map && data['message'] != null ? data['message'].toString().trim() : '';
 
-      final message = serverMessage.isNotEmpty
-          ? serverMessage
-          : status == 401
-              ? 'کلید API مربوط به Agent معتبر نیست.'
+      final message = status == 401
+          ? 'کلید API مربوط به Agent معتبر نیست.'
+          : serverMessage.isNotEmpty
+              ? serverMessage
               : status == 403
                   ? 'اجازه دسترسی به این بخش را ندارید.'
                   : status == 409
