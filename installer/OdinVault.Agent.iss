@@ -1,6 +1,6 @@
 #define MyAppName "OdinVault"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.22"
+  #define MyAppVersion "0.2.23"
 #endif
 #define MyAppPublisher "OdinVault"
 #define AgentExeName "OdinVault.Agent.exe"
