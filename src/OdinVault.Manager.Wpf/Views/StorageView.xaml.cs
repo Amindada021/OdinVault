@@ -1,1 +1,1 @@
-using System.Windows.Controls;namespace OdinVault.Manager.Wpf.Views;public partial class StorageView:UserControl{public StorageView(){InitializeComponent();}}
+using System.Windows.Controls;namespace OdinVault.Manager.Wpf.Views;public partial class StorageView:System.Windows.Controls.UserControl{public StorageView(){InitializeComponent();}}
