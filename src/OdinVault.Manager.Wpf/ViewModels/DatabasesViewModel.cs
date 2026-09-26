@@ -18,7 +18,7 @@ internal sealed class DatabasesViewModel : ObservableObject
  public bool HasError=>!string.IsNullOrWhiteSpace(Error);
  public bool HasNoItems=>!IsLoading&&!HasError&&Items.Count==0;
  public bool OperationRunning{get=>operationRunning;private set=>Set(ref operationRunning,value);} public string OperationStatus{get=>operationStatus;private set=>Set(ref operationStatus,value);}
- public ICommand RefreshCommand{get;} public ICommand TestCommand{get;} public ICommand BackupCommand{get;}
+ internal AgentDashboardClient Client=>client; public ICommand RefreshCommand{get;} public ICommand TestCommand{get;} public ICommand BackupCommand{get;}
  public DatabasesViewModel(AgentDashboardClient client){this.client=client;RefreshCommand=new AsyncCommand(LoadAsync);TestCommand=new AsyncCommand(TestAsync);BackupCommand=new AsyncCommand(BackupAsync);}
  public async Task LoadAsync(){IsLoading=true;Error=null;try{var rows=await client.DatabasesAsync();Items.Clear();foreach(var x in rows)Items.Add(new(x.Id,x.Name,x.DatabaseName,Host(x),x.IsEnabled?"فعال":"غیرفعال",x.IsEnabled,x.IsProtected?"محافظت‌شده":"نیازمند تنظیم",x.IsProtected,PersianDateFormatter.Format(x.LatestBackupAtUtc),FormatBytes(x.LatestBackupSizeBytes)));Raise(nameof(HasNoItems));}catch(Exception ex){Error=ex.Message;}finally{IsLoading=false;}}
  async Task TestAsync(){if(Selected is null)return;OperationRunning=true;OperationStatus="در حال تست اتصال…";try{await client.TestDatabaseAsync(Selected.Id);OperationStatus="اتصال دیتابیس موفق بود.";}catch(Exception ex){OperationStatus=$"خطا: {ex.Message}";}finally{OperationRunning=false;}}
