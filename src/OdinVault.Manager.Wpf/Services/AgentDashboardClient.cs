@@ -9,7 +9,7 @@ internal sealed class AgentDashboardClient : IDisposable
  readonly HttpClient http=new(){BaseAddress=new Uri("http://127.0.0.1:5188/"),Timeout=TimeSpan.FromSeconds(30)};
  readonly HttpClient longRunning=new(){BaseAddress=new Uri("http://127.0.0.1:5188/"),Timeout=Timeout.InfiniteTimeSpan};
  public Task<HealthResponse?> HealthAsync()=>http.GetFromJsonAsync<HealthResponse>("api/health",Json);
- public async Task<IReadOnlyList<DatabaseOverviewResponse>> DatabasesAsync(){
+ public async Task DeleteDatabaseAsync(Guid id,bool deleteHistory=true,bool deleteFiles=false){using var r=Authorized(HttpMethod.Delete,$"api/databases/{id}?deleteHistory={deleteHistory.ToString().ToLowerInvariant()}&deleteFiles={deleteFiles.ToString().ToLowerInvariant()}");using var x=await client.SendAsync(r);x.EnsureSuccessStatusCode();}public async Task<IReadOnlyList<DatabaseOverviewResponse>> DatabasesAsync(){
   using var request=new HttpRequestMessage(HttpMethod.Get,"api/databases/overview"); request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey()); using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<List<DatabaseOverviewResponse>>(Json)??[];
  }
  public async Task<DatabaseDetailsResponse?> DatabaseDetailsAsync(Guid id){
