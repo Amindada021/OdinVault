@@ -9,6 +9,9 @@ internal sealed class AgentDashboardClient : IDisposable
  public async Task<IReadOnlyList<DatabaseOverviewResponse>> DatabasesAsync(){
   using var request=new HttpRequestMessage(HttpMethod.Get,"api/databases/overview"); request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey()); using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<List<DatabaseOverviewResponse>>(Json)??[];
  }
+ public async Task<DatabaseDetailsResponse?> DatabaseDetailsAsync(Guid id){
+  using var request=new HttpRequestMessage(HttpMethod.Get,$"api/databases/{id}/details"); request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey()); using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<DatabaseDetailsResponse>(Json);
+ }
  public async Task<DashboardResponse?> DashboardAsync(){
   using var request=new HttpRequestMessage(HttpMethod.Get,"api/dashboard");
   request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey());
@@ -23,4 +26,10 @@ internal sealed record DashboardResponse(DateTime Utc,string Status,string Prote
 internal sealed record DashboardAttentionResponse(string Severity,Guid DatabaseId,string DatabaseName,string Title,string Message,DateTime? OccurredAtUtc);
 internal sealed record DashboardActivityResponse(Guid DatabaseId,string DatabaseName,Guid BackupId,int Status,int VerificationStatus,long? SizeBytes,DateTime StartedAtUtc,DateTime? CompletedAtUtc,string? Error);
 
-internal sealed record DatabaseOverviewResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,bool IsEnabled,bool IsProtected,DateTime? LatestBackupAtUtc,int? LatestBackupStatus,int? LatestVerificationStatus,long? LatestBackupSizeBytes,int LatestReplicaSucceeded,int LatestReplicaTotal);
+internal sealed record DatabaseOverviewResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,bool IsEnabled,bool IsProtected,DateTime? LatestBackupAtUtc,int? LatestBackupStatus,int? LatestVerificationStatus,long? LatestBackupSizeBytes);
+internal sealed record DatabaseDetailsResponse(DatabaseDetailsDatabaseResponse Database,DatabaseProtectionResponse Protection,IReadOnlyList<DatabaseBackupHistoryResponse> Backups,IReadOnlyList<DatabaseReplicaHistoryResponse> Replicas);
+internal sealed record DatabaseDetailsDatabaseResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,bool IsEnabled,DatabaseDetailsPolicyResponse? Policy);
+internal sealed record DatabaseDetailsPolicyResponse(string? ScheduleCron,int MaxLocalBackups,bool VerifyAfterBackup,string BackupDirectory,bool IsEnabled);
+internal sealed record DatabaseProtectionResponse(bool IsProtected,DateTime? LatestBackupAtUtc,int? LatestBackupStatus,int? LatestVerificationStatus,long? LatestBackupSizeBytes,int LatestReplicaSucceeded,int LatestReplicaTotal);
+internal sealed record DatabaseBackupHistoryResponse(Guid Id,int Status,int VerificationStatus,long? SizeBytes,DateTime StartedAtUtc,DateTime? CompletedAtUtc,bool LocalFileAvailable,string? Error);
+internal sealed record DatabaseReplicaHistoryResponse(Guid BackupRecordId,Guid StorageTargetId,string Name,int Type,int Status,long? SizeBytes,string? ContentHashSha256,string? Error,DateTime StartedAtUtc,DateTime? CompletedAtUtc);
