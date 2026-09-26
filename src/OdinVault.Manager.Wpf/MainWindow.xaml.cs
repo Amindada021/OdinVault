@@ -17,6 +17,7 @@ public partial class MainWindow : Window
  void Dashboard_Click(object sender,RoutedEventArgs e){SetActiveNav(sender);PageHost.Visibility=Visibility.Collapsed;DashboardPanel.Visibility=Visibility.Visible;}
  async void Databases_Click(object sender,RoutedEventArgs e){SetActiveNav(sender);var db=new DatabasesViewModel(vm.Client);var view=new DatabasesView{DataContext=db};PageHost.Content=view;DashboardPanel.Visibility=Visibility.Collapsed;PageHost.Visibility=Visibility.Visible;await db.LoadAsync();}
  async void Backups_Click(object sender,RoutedEventArgs e){SetActiveNav(sender);var model=new BackupsViewModel(vm.Client);PageHost.Content=new BackupsView{DataContext=model};DashboardPanel.Visibility=Visibility.Collapsed;PageHost.Visibility=Visibility.Visible;await model.LoadAsync();}
+ void About_Click(object s,RoutedEventArgs e){SetActiveNav(s);ShowPage(new AboutView());}
  void Update_Click(object s,RoutedEventArgs e){SetActiveNav(s);ShowPage(new UpdateView());}
  void Mobile_Click(object s,RoutedEventArgs e){SetActiveNav(s);ShowPage(new MobileView{DataContext=new MobileViewModel(vm.Client)});}
  void Settings_Click(object s,RoutedEventArgs e){SetActiveNav(s);ShowPage(new SettingsView(settingsStore,settings,ApplySettings));}
