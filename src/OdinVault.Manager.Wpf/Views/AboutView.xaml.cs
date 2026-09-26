@@ -1,0 +1,1 @@
+using System.Reflection;namespace OdinVault.Manager.Wpf.Views;public partial class AboutView:System.Windows.Controls.UserControl{public AboutView(){InitializeComponent();var v=Assembly.GetExecutingAssembly().GetName().Version;VersionText.Text=$"نسخه {v?.ToString(3)??"نامشخص"}";}}

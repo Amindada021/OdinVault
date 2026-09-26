@@ -1,0 +1,1 @@
+using System.Windows.Controls;namespace OdinVault.Manager.Wpf.Views;public partial class BackupsView:System.Windows.Controls.UserControl{public BackupsView(){InitializeComponent();}}
