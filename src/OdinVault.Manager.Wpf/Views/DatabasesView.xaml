@@ -15,7 +15,7 @@
     <TextBlock Text="در حال دریافت جزئیات…" Foreground="{DynamicResource MutedBrush}" Visibility="{Binding IsDetailsLoading,Converter={StaticResource BoolToVisibility}}"/>
     <TextBlock Text="{Binding DetailsError}" Foreground="#C2413B" TextWrapping="Wrap" Visibility="{Binding HasDetailsError,Converter={StaticResource BoolToVisibility}}"/>
     <StackPanel Visibility="{Binding HasDetails,Converter={StaticResource BoolToVisibility}}">
-     <TextBlock Text="{Binding Details.Name}" FontSize="20" FontWeight="Bold"/><TextBlock Text="{Binding Details.DatabaseName}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,14"/>
+     <TextBlock Text="{Binding Details.Name}" FontSize="20" FontWeight="Bold"/><TextBlock Text="{Binding Details.DatabaseName}" Foreground="{DynamicResource MutedBrush}" Margin="0,2,0,10"/><StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Button Content="تست اتصال" Command="{Binding TestCommand}"/><Button Content="اجرای بکاپ" Command="{Binding BackupCommand}"/></StackPanel><TextBlock Text="{Binding OperationStatus}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
      <TextBlock Text="سرور" Foreground="{DynamicResource MutedBrush}"/><TextBlock Text="{Binding Details.Host}" FlowDirection="LeftToRight" HorizontalAlignment="Right" Margin="0,2,0,10"/>
      <TextBlock Text="وضعیت حفاظت" Foreground="{DynamicResource MutedBrush}"/><TextBlock Text="{Binding Details.Protection}" FontWeight="SemiBold" Margin="0,2,0,10"/>
      <TextBlock Text="آخرین بکاپ" Foreground="{DynamicResource MutedBrush}"/><TextBlock Text="{Binding Details.LastBackup}" Margin="0,2,0,10"/>
