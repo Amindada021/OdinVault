@@ -11,8 +11,8 @@ public partial class MainWindow : Window
  async void OnLoaded(object s,RoutedEventArgs e){tray=new TrayService(ShowFromTray,()=>{allowClose=true;Close();});if(settings.StartMinimizedToTray){Hide();ShowInTaskbar=false;}await vm.RefreshAsync();}
  void OnClosing(object? s,CancelEventArgs e){if(!allowClose&&settings.MinimizeToTray){e.Cancel=true;Hide();ShowInTaskbar=false;tray?.Notify("OdinVault","برنامه در ناحیه اعلان‌ها در حال اجراست.");}}
  void ShowFromTray(){ShowInTaskbar=true;Show();WindowState=WindowState.Normal;Activate();}
- void ApplyTheme(){var merged=Application.Current.Resources.MergedDictionaries;merged[0]=new ResourceDictionary{Source=new Uri(dark?"Themes/Dark.xaml":"Themes/Light.xaml",UriKind.Relative)};}
- void ApplyLanguage(){FlowDirection=settings.Language=="en"?FlowDirection.LeftToRight:FlowDirection.RightToLeft;}
+ void ApplyTheme(){var merged=System.Windows.Application.Current.Resources.MergedDictionaries;merged[0]=new ResourceDictionary{Source=new Uri(dark?"Themes/Dark.xaml":"Themes/Light.xaml",UriKind.Relative)};}
+ void ApplyLanguage(){FlowDirection=settings.Language=="en"?System.Windows.FlowDirection.LeftToRight:System.Windows.FlowDirection.RightToLeft;}
  void Dashboard_Click(object sender,RoutedEventArgs e){PageHost.Visibility=Visibility.Collapsed;DashboardPanel.Visibility=Visibility.Visible;}
  async void Databases_Click(object sender,RoutedEventArgs e){var db=new DatabasesViewModel(vm.Client);var view=new DatabasesView{DataContext=db};PageHost.Content=view;DashboardPanel.Visibility=Visibility.Collapsed;PageHost.Visibility=Visibility.Visible;await db.LoadAsync();}
  async void Backups_Click(object sender,RoutedEventArgs e){var model=new BackupsViewModel(vm.Client);PageHost.Content=new BackupsView{DataContext=model};DashboardPanel.Visibility=Visibility.Collapsed;PageHost.Visibility=Visibility.Visible;await model.LoadAsync();}
