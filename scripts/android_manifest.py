@@ -16,20 +16,32 @@ def process(path, configure=False):
         raise ValueError("Android application element missing")
     permissions = root.findall("uses-permission")
     internet = any(p.get(attr("name")) == "android.permission.INTERNET" for p in permissions)
+    notifications = any(
+        p.get(attr("name")) == "android.permission.POST_NOTIFICATIONS"
+        for p in permissions
+    )
     if configure:
         if not internet:
             ET.SubElement(root, "uses-permission", {attr("name"): "android.permission.INTERNET"})
+        if not notifications:
+            ET.SubElement(
+                root,
+                "uses-permission",
+                {attr("name"): "android.permission.POST_NOTIFICATIONS"},
+            )
         application.set(attr("label"), "OdinVault")
         application.set(attr("usesCleartextTraffic"), "true")
         tree.write(path, encoding="utf-8", xml_declaration=True)
         return process(path)
     if not internet:
         raise ValueError("Release APK lacks INTERNET permission")
+    if not notifications:
+        raise ValueError("Release APK lacks POST_NOTIFICATIONS permission")
     if application.get(attr("usesCleartextTraffic")) != "true":
         raise ValueError("Release APK does not allow HTTP agents")
     if application.get(attr("networkSecurityConfig")):
         raise ValueError("Network security config overrides cleartext flag; review its policy")
-    print(f"Validated INTERNET and HTTP access: {path}")
+    print(f"Validated INTERNET, notifications and HTTP access: {path}")
 
 
 if __name__ == "__main__":
