@@ -72,10 +72,85 @@ class OdinVaultApiClient {
         data['service'] == 'OdinVault.Agent' && data['status'] == 'healthy';
   }
 
-  Future<List<OdinVaultDatabase>> databases({Duration? receiveTimeout}) async {
-    final data = (await _dio.get<Object>('/api/databases',
-        options: Options(receiveTimeout: receiveTimeout))).data;
-    if (data is! List) throw const OdinVaultApiException('پاسخ لیست دیتابیس‌ها نامعتبر است.');
+  Future<bool> reachable() async {
+    final response = await _dio.get<Object>(
+      '/api/health',
+      options: Options(
+        validateStatus: (status) => status == 200 || status == 503,
+      ),
+    );
+    return response.statusCode == 200 || response.statusCode == 503;
+  }
+
+  Future<OdinVaultBackupReport> backupReport({int days = 30}) async {
+    final normalizedDays = days == 7 || days == 90 ? days : 30;
+    return OdinVaultBackupReport.fromJson(
+      _json(
+        (await _dio.get<Object>(
+          '/api/reports/backup',
+          queryParameters: {'days': normalizedDays},
+        ))
+            .data,
+      ),
+    );
+  }
+
+  Future<OdinVaultStorageOverview> storageOverview() async =>
+      OdinVaultStorageOverview.fromJson(
+        _json((await _dio.get<Object>('/api/storage/overview')).data),
+      );
+
+  Future<OdinVaultDatabaseDetails> databaseDetails(String id) async =>
+      OdinVaultDatabaseDetails.fromJson(
+        _json((await _dio.get<Object>('/api/databases/$id/details')).data),
+      );
+
+  Future<OdinVaultStorageConnectionTest> testStorageTargetConnection(
+    String id,
+  ) async {
+    final data = _json(
+      (await _dio.post<Object>('/api/storage-targets/$id/connection-test')).data,
+    );
+    return OdinVaultStorageConnectionTest.fromJson(data);
+  }
+
+  Future<OdinVaultDashboard> dashboard() async =>
+      OdinVaultDashboard.fromJson(_json((await _dio.get<Object>('/api/dashboard')).data));
+
+  Future<OdinVaultAlerts> alerts({bool includeRead = true}) async =>
+      OdinVaultAlerts.fromJson(
+        _json(
+          (await _dio.get<Object>(
+            '/api/alerts',
+            queryParameters: {'includeRead': includeRead},
+          ))
+              .data,
+        ),
+      );
+
+  Future<void> markAlertsRead(List<String> keys) async {
+    if (keys.isEmpty) return;
+    await _dio.post<Object>('/api/alerts/mark-read', data: {'keys': keys});
+  }
+
+  Future<List<OdinVaultDatabaseOverview>> databaseOverviews() async {
+    final data = (await _dio.get<Object>('/api/databases/overview')).data;
+    if (data is! List) {
+      throw const OdinVaultApiException('پاسخ خلاصه دیتابیس‌ها نامعتبر است.');
+    }
+    return data
+        .whereType<Map>()
+        .map(
+          (e) => OdinVaultDatabaseOverview.fromJson(
+            Map<String, dynamic>.from(e),
+          ),
+        )
+        .toList();
+  }
+
+  Future<List<OdinVaultDatabase>> databases() async {
+    final data = (await _dio.get<Object>('/api/databases')).data;
+    if (data is! List) throw const OdinVaultApiException('Invalid database response.');
     return data.whereType<Map>().map((e) => OdinVaultDatabase.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
@@ -131,7 +206,90 @@ class OdinVaultApiClient {
   }
 
   Future<void> testDatabase(String id) async => _dio.post<Object>('/api/databases/$id/test');
-  Future<OdinVaultBackup> backupNow(String id) async => OdinVaultBackup.fromJson(_json((await _dio.post<Object>('/api/databases/$id/backups')).data));
+
+  Future<OdinVaultBackup> backupNow(
+    String id, {
+    void Function(String stage, int? percent)? onProgress,
+  }) async {
+    final requestId = _newRequestId();
+    var job = _json(
+      (await _dio.post<Object>(
+        '/api/databases/$id/backup-jobs',
+        options: Options(headers: {'X-OdinVault-Request-Id': requestId}),
+      ))
+          .data,
+    );
+
+    while (true) {
+      final stage = job['stage']?.toString() ?? '';
+      final percent = (job['percent'] as num?)?.toInt();
+      onProgress?.call(stage, percent);
+
+      final backup = job['backup'];
+      if (backup is Map) {
+        return OdinVaultBackup.fromJson(Map<String, dynamic>.from(backup));
+      }
+
+      if (stage == 'failed') {
+        throw OdinVaultApiException(
+          job['error']?.toString() ?? 'عملیات بکاپ ناموفق بود.',
+        );
+      }
+
+      final jobId = job['id']?.toString();
+      if (jobId == null || jobId.isEmpty) {
+        throw const OdinVaultApiException('پاسخ Job بکاپ نامعتبر است.');
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      job = _json((await _dio.get<Object>('/api/backup-jobs/$jobId')).data);
+    }
+  }
+
+  Future<OdinVaultBackupOverview> backupOverview({int take = 200}) async =>
+      OdinVaultBackupOverview.fromJson(
+        _json(
+          (await _dio.get<Object>(
+            '/api/backups/overview',
+            queryParameters: {'take': take.clamp(20, 500)},
+          ))
+              .data,
+        ),
+      );
+
+  Future<OdinVaultRestorePreflight> preflightRestore({
+    required String backupId,
+    required String targetDatabaseName,
+  }) async =>
+      OdinVaultRestorePreflight.fromJson(
+        _json(
+          (await _dio.post<Object>(
+            '/api/restores/preflight',
+            data: {
+              'backupId': backupId,
+              'targetDatabaseName': targetDatabaseName,
+            },
+          ))
+              .data,
+        ),
+      );
+
+  Future<OdinVaultRestoreResult> restore({
+    required String backupId,
+    required String targetDatabaseName,
+  }) async =>
+      OdinVaultRestoreResult.fromJson(
+        _json(
+          (await _dio.post<Object>(
+            '/api/restores',
+            data: {
+              'backupId': backupId,
+              'targetDatabaseName': targetDatabaseName,
+            },
+          ))
+              .data,
+        ),
+      );
 
   String createRequestId() {
     final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
@@ -166,13 +324,13 @@ class OdinVaultApiClient {
 
   Future<List<OdinVaultBackup>> backups(String id, {int take = 100}) async {
     final data = (await _dio.get<Object>('/api/databases/$id/backups', queryParameters: {'take': take})).data;
-    if (data is! List) throw const OdinVaultApiException('پاسخ تاریخچه بکاپ نامعتبر است.');
+    if (data is! List) throw const OdinVaultApiException('Invalid backup history response.');
     return data.whereType<Map>().map((e) => OdinVaultBackup.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<OdinVaultStorageTarget>> storageTargets() async {
     final data = (await _dio.get<Object>('/api/storage-targets')).data;
-    if (data is! List) throw const OdinVaultApiException('پاسخ مقصد ذخیره‌سازی نامعتبر است.');
+    if (data is! List) throw const OdinVaultApiException('Invalid storage target response.');
     return data.whereType<Map>().map((e) => OdinVaultStorageTarget.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
@@ -232,20 +390,31 @@ class OdinVaultApiClient {
 
   Future<List<OdinVaultReplica>> replicas(String backupId) async {
     final data = (await _dio.get<Object>('/api/backups/$backupId/replicas')).data;
-    if (data is! List) throw const OdinVaultApiException('پاسخ نسخه پشتیبان ثانویه نامعتبر است.');
+    if (data is! List) throw const OdinVaultApiException('Invalid replica response.');
     return data.whereType<Map>().map((e) => OdinVaultReplica.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<OdinVaultReplica>> retryReplication(String backupId) async {
     final data = (await _dio.post<Object>('/api/backups/$backupId/replicate')).data;
-    if (data is! List) throw const OdinVaultApiException('پاسخ تکثیر بکاپ نامعتبر است.');
+    if (data is! List) throw const OdinVaultApiException('Invalid replication response.');
     return data.whereType<Map>().map((e) => OdinVaultReplica.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
+
+  String _newRequestId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
   }
 
   Map<String, dynamic> _json(Object? data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
-    throw const OdinVaultApiException('پاسخ سرور نامعتبر است.');
+    throw const OdinVaultApiException('Invalid server response.');
   }
 }
 
