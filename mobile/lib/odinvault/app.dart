@@ -707,8 +707,8 @@ class _AddServerDialogState extends State<AddServerDialog> {
     );
 
     try {
-      if (!await OdinVaultApiClient(server).health()) {
-        throw const OdinVaultApiException('Agent پاسخ سالم برنگرداند.');
+      if (!await OdinVaultApiClient(server).reachable()) {
+        throw const OdinVaultApiException('اتصال به Agent برقرار نشد.');
       }
       if (mounted) Navigator.pop(context, server);
     } catch (e) {
@@ -3605,9 +3605,11 @@ class _DatabaseStatusCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      overview?.latestBackupAtUtc == null
-                          ? 'هنوز بکاپی ثبت نشده'
-                          : 'آخرین بکاپ: ${_formatDate(overview!.latestBackupAtUtc)} • ${_bytes(overview!.latestBackupSizeBytes)}',
+                      overview == null
+                          ? 'خلاصه وضعیت در دسترس نیست'
+                          : overview.latestBackupAtUtc == null
+                              ? 'هنوز بکاپی ثبت نشده'
+                              : 'آخرین بکاپ: ${_formatDate(overview.latestBackupAtUtc)} • ${_bytes(overview.latestBackupSizeBytes)}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     if (overview != null)
