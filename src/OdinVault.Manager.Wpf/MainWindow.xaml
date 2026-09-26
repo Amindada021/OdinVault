@@ -5,7 +5,7 @@
    <DockPanel>
     <StackPanel DockPanel.Dock="Top">
      <TextBlock Text="OdinVault" FontSize="25" FontWeight="Bold" Margin="8,12,8,2"/><TextBlock Text="Backup Control Center" Foreground="{DynamicResource MutedBrush}" Margin="8,0,8,24"/>
-     <Button Style="{StaticResource NavButton}" Content="⌂  داشبورد" Click="Dashboard_Click"/><Button Style="{StaticResource NavButton}" Content="▣  دیتابیس‌ها" Click="Databases_Click"/><Button Style="{StaticResource NavButton}" Content="◫  بکاپ‌ها" IsEnabled="False"/><Button Style="{StaticResource NavButton}" Content="◈  ذخیره‌سازی" IsEnabled="False"/><Button Style="{StaticResource NavButton}" Content="↶  بازیابی" IsEnabled="False"/><Button Style="{StaticResource NavButton}" Content="⚠  هشدارها" IsEnabled="False"/>
+     <Button Style="{StaticResource NavButton}" Content="⌂  داشبورد" Click="Dashboard_Click"/><Button Style="{StaticResource NavButton}" Content="▣  دیتابیس‌ها" Click="Databases_Click"/><Button Style="{StaticResource NavButton}" Content="◫  بکاپ‌ها" Click="Backups_Click"/><Button Style="{StaticResource NavButton}" Content="◈  ذخیره‌سازی" IsEnabled="False"/><Button Style="{StaticResource NavButton}" Content="↶  بازیابی" IsEnabled="False"/><Button Style="{StaticResource NavButton}" Content="⚠  هشدارها" IsEnabled="False"/>
     </StackPanel>
     <StackPanel DockPanel.Dock="Bottom"><TextBlock Text="{Binding AgentStatus}" FontWeight="SemiBold" Margin="8"/><TextBlock Text="Phase 1 · WPF Preview" Foreground="{DynamicResource MutedBrush}" Margin="8"/></StackPanel>
    </DockPanel>
