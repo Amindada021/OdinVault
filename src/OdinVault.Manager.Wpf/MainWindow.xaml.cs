@@ -25,7 +25,7 @@ public partial class MainWindow : Window
  async void Storage_Click(object s,RoutedEventArgs e){SetActiveNav(s);var m=new StorageViewModel(vm.Client);ShowPage(new StorageView{DataContext=m});await m.LoadAsync();}
  async void Alerts_Click(object s,RoutedEventArgs e){SetActiveNav(s);var m=new AlertsViewModel(vm.Client);ShowPage(new AlertsView{DataContext=m});await m.LoadAsync();}
  async void Reports_Click(object s,RoutedEventArgs e){SetActiveNav(s);var m=new ReportsViewModel(vm.Client);ShowPage(new ReportsView{DataContext=m});await m.LoadAsync();}
- void SetActiveNav(object source){foreach(var button in FindVisualChildren<System.Windows.Controls.Button>(this).Where(x=>Equals(x.Tag,"Nav")))button.Tag="Nav";if(source is System.Windows.Controls.Button selected)selected.Tag="NavActive";}
+ void SetActiveNav(object source){foreach(var button in FindVisualChildren<System.Windows.Controls.Button>(this).Where(x=>Equals(x.Tag,"Nav")||Equals(x.Tag,"NavActive")))button.Tag="Nav";if(source is System.Windows.Controls.Button selected)selected.Tag="NavActive";}
  static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T:DependencyObject{for(var i=0;i<System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);i++){var child=System.Windows.Media.VisualTreeHelper.GetChild(root,i);if(child is T match)yield return match;foreach(var nested in FindVisualChildren<T>(child))yield return nested;}}
  void ShowPage(object view){PageHost.Content=view;DashboardPanel.Visibility=Visibility.Collapsed;PageHost.Visibility=Visibility.Visible;}
  void Theme_Click(object sender,RoutedEventArgs e){dark=!dark;ApplyTheme();settings=settings with{Theme=dark?"Dark":"Light"};settingsStore.Save(settings);}
