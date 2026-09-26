@@ -10,6 +10,7 @@
    <ResourceDictionary.MergedDictionaries>
     <ResourceDictionary Source="Themes/Light.xaml"/>
     <ResourceDictionary Source="Themes/Controls.xaml"/>
+    <ResourceDictionary Source="Localization/Strings.fa.xaml"/>
    </ResourceDictionary.MergedDictionaries>
   </ResourceDictionary>
  </Application.Resources>
