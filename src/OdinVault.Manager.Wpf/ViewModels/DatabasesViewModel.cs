@@ -9,12 +9,12 @@ internal sealed class DatabasesViewModel : ObservableObject
  public ObservableCollection<DatabaseRow> Items{get;}=[];
  public bool IsLoading{get=>loading;private set{if(Set(ref loading,value))Raise(nameof(HasNoItems));}}
  public string? Error{get=>error;private set{if(Set(ref error,value)){Raise(nameof(HasError));Raise(nameof(HasNoItems));}}}
- public bool IsDetailsLoading{get=>detailsLoading;private set=>Set(ref detailsLoading,value);}
- public string? DetailsError{get=>detailsError;private set{if(Set(ref detailsError,value))Raise(nameof(HasDetailsError));}}
+ public bool IsDetailsLoading{get=>detailsLoading;private set{if(Set(ref detailsLoading,value))Raise(nameof(ShowSelectionPrompt));}}
+ public string? DetailsError{get=>detailsError;private set{if(Set(ref detailsError,value))Raise(nameof(HasDetailsError));Raise(nameof(ShowSelectionPrompt));}}
  public bool HasDetailsError=>!string.IsNullOrWhiteSpace(DetailsError);
  public DatabaseRow? Selected{get=>selected;set{if(Set(ref selected,value)&&value is not null)_=LoadDetailsAsync(value.Id);}}
- public DatabaseDetailsCard? Details{get=>details;private set{if(Set(ref details,value))Raise(nameof(HasDetails));}}
- public bool HasDetails=>Details is not null;
+ public DatabaseDetailsCard? Details{get=>details;private set{if(Set(ref details,value))Raise(nameof(HasDetails));Raise(nameof(ShowSelectionPrompt));}}
+ public bool HasDetails=>Details is not null; public bool ShowSelectionPrompt=>!HasDetails&&!IsDetailsLoading&&!HasDetailsError;
  public bool HasError=>!string.IsNullOrWhiteSpace(Error);
  public bool HasNoItems=>!IsLoading&&!HasError&&Items.Count==0;
  public ICommand RefreshCommand{get;}
