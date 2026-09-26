@@ -12,7 +12,7 @@ internal sealed class AgentDashboardClient : IDisposable
   using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode();
   return await response.Content.ReadFromJsonAsync<DashboardResponse>(Json);
  }
- static string LoadApiKey(){var p=Path.Combine(AppContext.BaseDirectory,"data","agent-api-key.txt"); if(!File.Exists(p)) p=Path.Combine(AppContext.BaseDirectory,"..","OdinVault.Agent","data","agent-api-key.txt"); return File.Exists(p)?File.ReadAllText(p).Trim():string.Empty;}
+ static string LoadApiKey(){var configured=Environment.GetEnvironmentVariable("ODINVAULT_API_KEY");if(!string.IsNullOrWhiteSpace(configured))return configured.Trim();var p=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"OdinVault","agent-api-key.txt");if(!File.Exists(p))throw new InvalidOperationException($"کلید Agent پیدا نشد: {p}");var key=File.ReadAllText(p).Trim();if(string.IsNullOrWhiteSpace(key))throw new InvalidOperationException("فایل کلید Agent خالی است.");return key;}
  public void Dispose()=>http.Dispose();
 }
 internal sealed record HealthResponse(string? Service,string? Status,DateTime Utc);
