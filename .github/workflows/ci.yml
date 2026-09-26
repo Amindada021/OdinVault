@@ -43,10 +43,10 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          [xml]$project = Get-Content "src/OdinVault.Manager.Wpf/OdinVault.Manager.Wpf.csproj"
+          [xml]$project = Get-Content "src/OdinVault.Manager/OdinVault.Manager.csproj"
           $version = [string]($project.Project.PropertyGroup.Version | Select-Object -First 1)
           if ([string]::IsNullOrWhiteSpace($version)) {
-            throw "Version was not found in OdinVault.Manager.Wpf.csproj"
+            throw "Version was not found in OdinVault.Manager.csproj"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
@@ -56,7 +56,7 @@ jobs:
 
       - name: Publish self-contained Manager
         shell: pwsh
-        run: dotnet publish src/OdinVault.Manager.Wpf/OdinVault.Manager.Wpf.csproj -c Release -r win-x64 --self-contained true -o artifacts/manager
+        run: dotnet publish src/OdinVault.Manager/OdinVault.Manager.csproj -c Release -r win-x64 --self-contained true -o artifacts/manager
 
       - name: Install Inno Setup
         shell: pwsh
@@ -193,10 +193,10 @@ jobs:
         run: |
           MANAGER_VERSION=$(python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          root = ET.parse("src/OdinVault.Manager.Wpf/OdinVault.Manager.Wpf.csproj").getroot()
+          root = ET.parse("src/OdinVault.Manager/OdinVault.Manager.csproj").getroot()
           version = next((x.text for x in root.iter("Version") if x.text), None)
           if not version:
-              raise SystemExit("WPF Manager version not found")
+              raise SystemExit("Manager version not found")
           print(version)
           PY
           )
