@@ -28,6 +28,11 @@ internal sealed class AgentDashboardClient : IDisposable
  public void SaveMobileBaseUrl(string value){if(!Uri.TryCreate(value.Trim(),UriKind.Absolute,out var uri)||(uri.Scheme!="http"&&uri.Scheme!="https"))throw new InvalidOperationException("آدرس اتصال موبایل معتبر نیست.");var dir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"OdinVault");Directory.CreateDirectory(dir);File.WriteAllText(Path.Combine(dir,"mobile-base-url.txt"),value.Trim());}
  public async Task<AgentEndpointProbeResult> TestAgentEndpointAsync(string baseUrl){using var c=new HttpClient{BaseAddress=new Uri(baseUrl.Trim().TrimEnd('/')+"/"),Timeout=TimeSpan.FromSeconds(8)};using var r=new HttpRequestMessage(HttpMethod.Get,"api/health");r.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey());using var response=await c.SendAsync(r);return new(response.IsSuccessStatusCode,$"{(int)response.StatusCode} {response.ReasonPhrase}");}
  public async Task<PortProbeResult> TestPortAsync(string host,int port){using var client=new System.Net.Sockets.TcpClient();var started=DateTime.UtcNow;try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(5));await client.ConnectAsync(host,port,timeout.Token);return new(true,(DateTime.UtcNow-started).TotalMilliseconds,null);}catch(Exception e){return new(false,null,e.Message);}}
+ public async Task<T?> SendAsync<T>(HttpMethod method,string uri,object? body=null){using var r=Authorized(method,uri);if(body is not null)r.Content=JsonContent.Create(body,options:Json);using var response=await http.SendAsync(r);response.EnsureSuccessStatusCode();if(response.StatusCode==System.Net.HttpStatusCode.NoContent)return default;return await response.Content.ReadFromJsonAsync<T>(Json);}
+ public Task<List<DatabaseResponse>?> DatabasesFullAsync()=>GetAuthorizedAsync<List<DatabaseResponse>>("api/databases");
+ public Task<List<ReplicaTargetResponse>?> ReplicaTargetsAsync()=>GetAuthorizedAsync<List<ReplicaTargetResponse>>("api/storage-targets");
+ public Task<ReplicaSettingsResponse?> ReplicaSettingsAsync()=>GetAuthorizedAsync<ReplicaSettingsResponse>("api/replica/settings");
+ public Task<List<ReceivedBackupResponse>?> ReceivedReplicasAsync()=>GetAuthorizedAsync<List<ReceivedBackupResponse>>("api/replica/received");
  public async Task MarkAlertsReadAsync(IReadOnlyList<string> keys){using var r=Authorized(HttpMethod.Post,"api/alerts/mark-read");r.Content=JsonContent.Create(new MarkAlertsReadClientRequest(keys),options:Json);using var response=await http.SendAsync(r);response.EnsureSuccessStatusCode();}
  public async Task<AlertsOverviewResponse?> AlertsAsync()=>await GetAuthorizedAsync<AlertsOverviewResponse>("api/alerts?includeRead=true");
  public async Task<BackupReportResponse?> ReportAsync(int days=30)=>await GetAuthorizedAsync<BackupReportResponse>($"api/reports/backup?days={(days==7?7:days==90?90:30)}");
@@ -42,6 +47,11 @@ internal sealed class AgentDashboardClient : IDisposable
  static string LoadApiKey(){var configured=Environment.GetEnvironmentVariable("ODINVAULT_API_KEY");if(!string.IsNullOrWhiteSpace(configured))return configured.Trim();var p=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"OdinVault","agent-api-key.txt");if(!File.Exists(p))throw new InvalidOperationException($"کلید Agent پیدا نشد: {p}");var key=File.ReadAllText(p).Trim();if(string.IsNullOrWhiteSpace(key))throw new InvalidOperationException("فایل کلید Agent خالی است.");return key;}
  public void Dispose(){http.Dispose();longRunning.Dispose();}
 }
+internal sealed record DatabaseResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,string Username,bool HasPassword,bool TrustServerCertificate,bool IsEnabled,DateTime CreatedAtUtc,BackupPolicyResponse? Policy);
+internal sealed record BackupPolicyResponse(string BackupDirectory,string? ScheduleCron,int MaxLocalBackups,bool VerifyAfterBackup,bool IsEnabled,DateTime? LastScheduledRunUtc);
+internal sealed record ReplicaSettingsResponse(string Directory);
+internal sealed record ReplicaTargetResponse(Guid Id,string Name,int Type,bool IsEnabled);
+internal sealed record ReceivedBackupResponse(string FileName,string RelativePath,long SizeBytes,DateTime ReceivedAtUtc);
 internal sealed record UpdateStorageTargetClientRequest(string Name,string? FolderId,bool IsEnabled,string? BaseUrl,string? ApiKey);
 internal sealed record AgentEndpointProbeResult(bool Success,string Message);
 internal sealed record PortProbeResult(bool IsOpen,double? LatencyMilliseconds,string? Error);
