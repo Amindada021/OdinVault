@@ -12,6 +12,7 @@ internal sealed class AgentDashboardClient : IDisposable
  public async Task<DatabaseDetailsResponse?> DatabaseDetailsAsync(Guid id){
   using var request=new HttpRequestMessage(HttpMethod.Get,$"api/databases/{id}/details"); request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey()); using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<DatabaseDetailsResponse>(Json);
  }
+ public async Task<BackupOverviewResponse?> BackupsAsync(int take=200){using var request=new HttpRequestMessage(HttpMethod.Get,$"api/backups/overview?take={Math.Clamp(take,20,500)}");request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey());using var response=await http.SendAsync(request);response.EnsureSuccessStatusCode();return await response.Content.ReadFromJsonAsync<BackupOverviewResponse>(Json);}
  public async Task<DashboardResponse?> DashboardAsync(){
   using var request=new HttpRequestMessage(HttpMethod.Get,"api/dashboard");
   request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey());
@@ -33,3 +34,7 @@ internal sealed record DatabaseDetailsPolicyResponse(string? ScheduleCron,int Ma
 internal sealed record DatabaseProtectionResponse(bool IsProtected,DateTime? LatestBackupAtUtc,int? LatestBackupStatus,int? LatestVerificationStatus,long? LatestBackupSizeBytes,int LatestReplicaSucceeded,int LatestReplicaTotal);
 internal sealed record DatabaseBackupHistoryResponse(Guid Id,int Status,int VerificationStatus,long? SizeBytes,DateTime StartedAtUtc,DateTime? CompletedAtUtc,bool LocalFileAvailable,string? Error);
 internal sealed record DatabaseReplicaHistoryResponse(Guid BackupRecordId,Guid StorageTargetId,string Name,int Type,int Status,long? SizeBytes,string? ContentHashSha256,string? Error,DateTime StartedAtUtc,DateTime? CompletedAtUtc);
+
+internal sealed record BackupOverviewResponse(DateTime Utc,IReadOnlyList<BackupJobOverviewResponse> Jobs,IReadOnlyList<BackupHistoryOverviewResponse> Backups);
+internal sealed record BackupJobOverviewResponse(Guid Id,Guid DatabaseEndpointId,string DatabaseName,int Status,string Stage,int? Percent,DateTime CreatedAtUtc,DateTime? StartedAtUtc,DateTime UpdatedAtUtc,DateTime? CompletedAtUtc,Guid? BackupRecordId,string? ErrorCode,string? ErrorMessage);
+internal sealed record BackupHistoryOverviewResponse(Guid Id,Guid DatabaseEndpointId,string DatabaseName,int Status,int VerificationStatus,long? SizeBytes,DateTime StartedAtUtc,DateTime? CompletedAtUtc,bool LocalFileAvailable,string? Error);
