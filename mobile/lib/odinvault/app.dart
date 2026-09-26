@@ -3570,8 +3570,9 @@ class _DatabaseStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final latestOk = overview?.latestBackupStatus == 2;
-    final protected = overview?.isProtected == true;
+    final currentOverview = overview;
+    final latestOk = currentOverview?.latestBackupStatus == 2;
+    final protected = currentOverview?.isProtected == true;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -3588,7 +3589,7 @@ class _DatabaseStatusCard extends StatelessWidget {
               Icon(
                 !database.isEnabled
                     ? Icons.pause_circle_outline
-                    : overview?.latestBackupAtUtc == null
+                    : currentOverview?.latestBackupAtUtc == null
                         ? Icons.schedule_outlined
                         : protected && latestOk
                             ? Icons.shield_outlined
@@ -3606,14 +3607,14 @@ class _DatabaseStatusCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      overview == null
+                      currentOverview == null
                           ? 'خلاصه وضعیت در دسترس نیست'
-                          : overview.latestBackupAtUtc == null
+                          : currentOverview.latestBackupAtUtc == null
                               ? 'هنوز بکاپی ثبت نشده'
-                              : 'آخرین بکاپ: ${_formatDate(overview.latestBackupAtUtc)} • ${_bytes(overview.latestBackupSizeBytes)}',
+                              : 'آخرین بکاپ: ${_formatDate(currentOverview.latestBackupAtUtc)} • ${_bytes(currentOverview.latestBackupSizeBytes)}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    if (overview != null)
+                    if (currentOverview != null)
                       Text(
                         protected
                             ? 'وضعیت حفاظت: محافظت‌شده'
