@@ -345,7 +345,14 @@ class OdinVaultApiClient {
           'testConnection': true,
         },
       );
-  Future<void> testReplicaTarget(String id) async => _dio.post<Object>('/api/storage-targets/$id/test');
+  Future<void> testReplicaTarget(String id) async {
+    final result = await testStorageTargetConnection(id);
+    if (!result.success) {
+      throw OdinVaultApiException(
+        result.message.isEmpty ? 'تست اتصال مقصد ناموفق بود.' : result.message,
+      );
+    }
+  }
 
   Future<GoogleDrivePairingStart> startGoogleDrivePairing({required String targetName, String? folderId}) async {
     final redirectUri = '${baseUrl.replaceAll(RegExp(r'/$'), '')}/api/storage-targets/google-drive/callback';
@@ -426,21 +433,40 @@ class OdinVaultApiException implements Exception {
     if (error is OdinVaultApiException) return error;
     if (error is DioException) {
       final status = error.response?.statusCode;
-      final message = status == 401
-          ? 'کلید API مربوط به Agent معتبر نیست.'
-          : status == 403
-              ? 'اجازه دسترسی به این بخش را ندارید.'
-              : switch (error.type) {
-                  DioExceptionType.connectionTimeout ||
-                  DioExceptionType.receiveTimeout ||
-                  DioExceptionType.sendTimeout => 'مهلت اتصال یا دریافت پاسخ از Agent تمام شد.',
-                  DioExceptionType.badCertificate => 'گواهی امنیتی Agent معتبر نیست.',
-                  DioExceptionType.cancel => 'درخواست لغو شد.',
-                  DioExceptionType.badResponse => 'Agent پاسخ ناموفق برگرداند (HTTP ${status ?? '-'}).',
-                  _ => 'اتصال به OdinVault Agent برقرار نشد.',
-                };
-      return OdinVaultApiException('$message\nآدرس درخواست: \u2066'
-          '${safeRequestUri(error.requestOptions.uri)}\u2069\nنوع خطا: ${error.type.name}');
+      final data = error.response?.data;
+      final serverMessage =
+          data is Map && data['message'] != null ? data['message'].toString().trim() : '';
+
+      final message = serverMessage.isNotEmpty
+          ? serverMessage
+          : status == 401
+              ? 'کلید API مربوط به Agent معتبر نیست.'
+              : status == 403
+                  ? 'اجازه دسترسی به این بخش را ندارید.'
+                  : status == 409
+                      ? 'عملیات مشابهی هم‌اکنون در حال اجرا است.'
+                      : status == 429
+                          ? 'صف عملیات بکاپ پر است؛ کمی بعد دوباره تلاش کنید.'
+                          : status == 503
+                              ? 'Agent در دسترس است اما وضعیت سرویس سالم نیست.'
+                              : switch (error.type) {
+                                  DioExceptionType.connectionTimeout ||
+                                  DioExceptionType.receiveTimeout ||
+                                  DioExceptionType.sendTimeout =>
+                                    'مهلت اتصال یا دریافت پاسخ از Agent تمام شد.',
+                                  DioExceptionType.badCertificate =>
+                                    'گواهی امنیتی Agent معتبر نیست.',
+                                  DioExceptionType.cancel => 'درخواست لغو شد.',
+                                  DioExceptionType.badResponse =>
+                                    'Agent پاسخ ناموفق برگرداند (HTTP ${status ?? '-'}).',
+                                  _ => 'اتصال به OdinVault Agent برقرار نشد.',
+                                };
+
+      return OdinVaultApiException(
+        '$message\nآدرس درخواست: \u2066'
+        '${safeRequestUri(error.requestOptions.uri)}\u2069'
+        '\nنوع خطا: ${error.type.name}',
+      );
     }
     return const OdinVaultApiException('عملیات انجام نشد. دوباره تلاش کنید.');
   }
