@@ -59,4 +59,5 @@ internal sealed record BackupJobResponse(Guid Id,string Stage,int? Percent,JsonE
 
 internal sealed record RestoreClientRequest(Guid BackupId,string TargetDatabaseName);internal sealed record RestorePreflightClientResponse(Guid BackupId,Guid DatabaseEndpointId,string EndpointName,string SourceDatabaseName,string TargetDatabaseName,string BackupFileName,long? BackupSizeBytes,int VerificationStatus,string ProductVersion,string DataDirectory,string LogDirectory,IReadOnlyList<RestoreFilePlanClientResponse> Files);internal sealed record RestoreFilePlanClientResponse(string LogicalName,string Type,string TargetPath);internal sealed record RestoreExecutionClientResponse(Guid BackupId,Guid DatabaseEndpointId,string TargetDatabaseName,DateTime CompletedAtUtc,double DurationSeconds);
 
-internal sealed record StorageConnectionTestResponse(bool Success,string? Message);\ninternal sealed record MarkAlertsReadClientRequest(IReadOnlyList<string> Keys);
+internal sealed record StorageConnectionTestResponse(bool Success,string? Message);
+internal sealed record MarkAlertsReadClientRequest(IReadOnlyList<string> Keys);
