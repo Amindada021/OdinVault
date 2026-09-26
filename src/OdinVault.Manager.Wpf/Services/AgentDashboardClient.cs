@@ -15,6 +15,11 @@ internal sealed class AgentDashboardClient : IDisposable
  public async Task<DatabaseDetailsResponse?> DatabaseDetailsAsync(Guid id){
   using var request=new HttpRequestMessage(HttpMethod.Get,$"api/databases/{id}/details"); request.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey()); using var response=await http.SendAsync(request); response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<DatabaseDetailsResponse>(Json);
  }
+ public Task<List<DiscoveredDatabaseResponse>?> DiscoverAsync(DiscoverSqlServerRequest body)=>SendAsync<List<DiscoveredDatabaseResponse>>(HttpMethod.Post,"api/sql-server/discover",body);
+ public Task<DatabaseResponse?> CreateDatabaseAsync(CreateDatabaseRequest body)=>SendAsync<DatabaseResponse>(HttpMethod.Post,"api/databases",body);
+ public Task<DatabaseResponse?> GetDatabaseAsync(Guid id)=>GetAuthorizedAsync<DatabaseResponse>($"api/databases/{id}");
+ public async Task UpdateDatabaseAsync(Guid id,UpdateDatabaseRequest body){await SendAsync<System.Text.Json.JsonElement>(HttpMethod.Put,$"api/databases/{id}",body);}
+ public async Task UpdatePolicyAsync(Guid id,UpdateBackupPolicyRequest body){await SendAsync<System.Text.Json.JsonElement>(HttpMethod.Put,$"api/databases/{id}/policy",body);}
  public async Task TestDatabaseAsync(Guid id){using var request=Authorized(HttpMethod.Post,$"api/databases/{id}/test");using var response=await http.SendAsync(request);response.EnsureSuccessStatusCode();}
  public async Task RunBackupAsync(Guid id,IProgress<string>? progress=null){var requestId=Guid.NewGuid();using var start=Authorized(HttpMethod.Post,$"api/databases/{id}/backup-jobs");start.Headers.TryAddWithoutValidation("X-OdinVault-Request-Id",requestId.ToString());using var sr=await http.SendAsync(start);sr.EnsureSuccessStatusCode();var job=(await sr.Content.ReadFromJsonAsync<BackupJobResponse>(Json))!;while(true){progress?.Report(job.Stage switch{"queued"=>"در صف بکاپ","backup"=>$"ساخت بکاپ {job.Percent?.ToString()??"…"}٪","verify"=>"بررسی سلامت فایل","replicating"=>"ارسال به پشتیبان","failed"=>"ناموفق",_=>"در حال انجام"});if(job.Backup is not null)return;if(job.Stage=="failed")throw new InvalidOperationException(job.Error);await Task.Delay(1500);using var poll=Authorized(HttpMethod.Get,$"api/backup-jobs/{job.Id}");using var pr=await http.SendAsync(poll);pr.EnsureSuccessStatusCode();job=(await pr.Content.ReadFromJsonAsync<BackupJobResponse>(Json))!;}}
  HttpRequestMessage Authorized(HttpMethod method,string uri){var r=new HttpRequestMessage(method,uri);r.Headers.TryAddWithoutValidation("X-OdinVault-Key",LoadApiKey());return r;}
@@ -47,6 +52,11 @@ internal sealed class AgentDashboardClient : IDisposable
  static string LoadApiKey(){var configured=Environment.GetEnvironmentVariable("ODINVAULT_API_KEY");if(!string.IsNullOrWhiteSpace(configured))return configured.Trim();var p=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"OdinVault","agent-api-key.txt");if(!File.Exists(p))throw new InvalidOperationException($"کلید Agent پیدا نشد: {p}");var key=File.ReadAllText(p).Trim();if(string.IsNullOrWhiteSpace(key))throw new InvalidOperationException("فایل کلید Agent خالی است.");return key;}
  public void Dispose(){http.Dispose();longRunning.Dispose();}
 }
+internal sealed record DiscoverSqlServerRequest(string Host,int? Port,string? Username,string? Password,bool TrustServerCertificate);
+internal sealed record DiscoveredDatabaseResponse(string Name,int DatabaseId,string State,string RecoveryModel,bool IsSystem,bool HasAccess,bool IsRegistered,bool CanBackup);
+internal sealed record CreateDatabaseRequest(string Name,string Host,int? Port,string DatabaseName,string? Username,string? Password,bool TrustServerCertificate,string BackupDirectory,int MaxLocalBackups,bool VerifyAfterBackup,string? ScheduleCron,bool IsEnabled);
+internal sealed record UpdateDatabaseRequest(string Name,string Host,int? Port,string DatabaseName,string? Username,string? Password,bool ClearPassword,bool TrustServerCertificate,bool IsEnabled);
+internal sealed record UpdateBackupPolicyRequest(string BackupDirectory,int MaxLocalBackups,bool VerifyAfterBackup,string? ScheduleCron,bool IsEnabled);
 internal sealed record DatabaseResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,string Username,bool HasPassword,bool TrustServerCertificate,bool IsEnabled,DateTime CreatedAtUtc,BackupPolicyResponse? Policy);
 internal sealed record BackupPolicyResponse(string BackupDirectory,string? ScheduleCron,int MaxLocalBackups,bool VerifyAfterBackup,bool IsEnabled,DateTime? LastScheduledRunUtc);
 internal sealed record ReplicaSettingsResponse(string Directory);
