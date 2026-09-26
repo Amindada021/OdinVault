@@ -11,7 +11,7 @@
   <Border Grid.Column="1" Style="{StaticResource Card}">
    <Grid><StackPanel>
     <TextBlock Text="جزئیات دیتابیس" FontSize="18" FontWeight="Bold" Margin="0,0,0,16"/>
-    <TextBlock Text="یک دیتابیس را انتخاب کنید." Foreground="{DynamicResource MutedBrush}" Visibility="{Binding HasDetails,Converter={StaticResource InverseBoolToVisibility}}"/>
+    <TextBlock Text="یک دیتابیس را انتخاب کنید." Foreground="{DynamicResource MutedBrush}"/>
     <TextBlock Text="در حال دریافت جزئیات…" Foreground="{DynamicResource MutedBrush}" Visibility="{Binding IsDetailsLoading,Converter={StaticResource BoolToVisibility}}"/>
     <TextBlock Text="{Binding DetailsError}" Foreground="#C2413B" TextWrapping="Wrap" Visibility="{Binding HasDetailsError,Converter={StaticResource BoolToVisibility}}"/>
     <StackPanel Visibility="{Binding HasDetails,Converter={StaticResource BoolToVisibility}}">
