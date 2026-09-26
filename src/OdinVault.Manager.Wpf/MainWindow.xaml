@@ -24,6 +24,6 @@
     <Border Grid.Column="1" Style="{StaticResource Card}"><DockPanel><TextBlock DockPanel.Dock="Top" Text="نیازمند توجه" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/><ListBox ItemsSource="{Binding Attention}" BorderThickness="0" Background="Transparent"><ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4,8"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding Database}" Foreground="{DynamicResource MutedBrush}"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox></DockPanel></Border>
    </Grid>
   </Grid>
+  <ContentControl x:Name="PageHost" Grid.Column="1" Visibility="Collapsed"/>
  </Grid>
- <ContentControl x:Name="PageHost" Grid.Column="1" Visibility="Collapsed"/>
 </Window>
