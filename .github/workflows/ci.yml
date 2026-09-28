@@ -222,6 +222,10 @@ jobs:
       - name: Build Android APK
         working-directory: mobile
         shell: bash
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ODINVAULT_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_STORE_PASSWORD }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
