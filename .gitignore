@@ -17,6 +17,10 @@ backups/
 data/
 keys/
 
+# Android signing keys
+*.jks
+*.keystore
+
 # Secrets/config overrides
 appsettings.Local.json
 appsettings.Production.json
