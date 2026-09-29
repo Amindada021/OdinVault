@@ -25,6 +25,9 @@ PrivilegesRequired=admin
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\Manager\{#ManagerExeName}
+UninstallDisplayName=OdinVault
+Uninstallable=yes
+CreateUninstallRegKey=yes
 
 [Files]
 Source: "..\artifacts\agent\*"; DestDir: "{app}\Agent"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -38,6 +41,7 @@ Name: "{commonappdata}\OdinVault\replicas"
 [Icons]
 Name: "{group}\OdinVault Manager"; Filename: "{app}\Manager\{#ManagerExeName}"
 Name: "{autodesktop}\OdinVault Manager"; Filename: "{app}\Manager\{#ManagerExeName}"; Tasks: desktopicon
+Name: "{group}\Uninstall OdinVault"; Filename: "{uninstallexe}"
 
 [Tasks]
 Name: "desktopicon"; Description: "ایجاد میانبر OdinVault Manager روی Desktop"; GroupDescription: "میانبرها:"; Flags: unchecked
@@ -52,8 +56,9 @@ Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; Flags: runhidden w
 Filename: "{app}\Manager\{#ManagerExeName}"; Description: "اجرای OdinVault Manager"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{sys}\\sc.exe"; Parameters: "config {#ServiceName} start= disabled"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{sys}\sc.exe"; Parameters: "config {#ServiceName} start= disabled"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\sc.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AgentExeName}"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\sc.exe"; Parameters: "delete {#ServiceName}"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""OdinVault Agent"""; Flags: runhidden waituntilterminated
 
@@ -63,7 +68,9 @@ var
   ResultCode: Integer;
 begin
   Result := '';
+  Exec(ExpandConstant('{sys}\sc.exe'), 'config {#ServiceName} start= disabled', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\sc.exe'), 'stop {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AgentExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\sc.exe'), 'delete {#ServiceName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(1000);
 end;

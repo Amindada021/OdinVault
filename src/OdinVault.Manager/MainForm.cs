@@ -4328,7 +4328,7 @@ internal sealed class AddDatabaseForm : Form
         AddField(panel, 3, "نام دیتابیس", _database);
         AddField(panel, 4, "Username", _username);
         AddField(panel, 5, "Password", _password);
-        AddField(panel, 6, "مسیر بکاپ روی SQL Server", _backupDirectory);
+        AddField(panel, 6, "پوشه اصلی بکاپ‌ها", _backupDirectory);
         AddField(panel, 7, "تعداد فایل محلی", _maxBackups);
         AddField(panel, 8, "زمان‌بندی", _schedule);
 
