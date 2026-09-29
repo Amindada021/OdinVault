@@ -137,6 +137,7 @@ jobs:
           flutter create --platforms=android --org com.odinvault --project-name odinvault_mobile .
           rm -f test/widget_test.dart
           cp platform_templates/MainActivity.kt android/app/src/main/kotlin/com/odinvault/odinvault_mobile/MainActivity.kt
+          cp -R platform_templates/res/* android/app/src/main/res/
           python3 ../scripts/android_manifest.py configure android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           from pathlib import Path

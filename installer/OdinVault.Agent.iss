@@ -16,6 +16,7 @@ DefaultDirName={autopf}\OdinVault
 DefaultGroupName=OdinVault
 OutputDir=output
 OutputBaseFilename=OdinVault-Setup-v{#MyAppVersion}
+SetupIconFile=..\src\OdinVault.Manager\Assets\OdinVault.ico
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
