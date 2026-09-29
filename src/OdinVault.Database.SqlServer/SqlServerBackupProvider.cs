@@ -29,10 +29,19 @@ public sealed class SqlServerBackupProvider : IDatabaseBackupProvider
                 "Remote SQL Server backups must use a UNC/shared backup directory that is accessible to both the SQL Server service and the OdinVault Agent.");
         }
 
-        if (!Directory.Exists(request.BackupDirectory))
-            throw new InvalidOperationException("Backup directory does not exist or is not accessible by the OdinVault Agent. Remote SQL Server backups require a shared UNC path visible to both services.");
+        var databaseDirectory = GetDatabaseBackupDirectory(request);
+        try
+        {
+            Directory.CreateDirectory(databaseDirectory);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            throw new InvalidOperationException(
+                "Backup directory could not be created or accessed by the OdinVault Agent.",
+                ex);
+        }
 
-        var probePath = Path.Combine(request.BackupDirectory, $".odinvault-write-test-{Guid.NewGuid():N}.tmp");
+        var probePath = Path.Combine(databaseDirectory, $".odinvault-write-test-{Guid.NewGuid():N}.tmp");
         try
         {
             await using (var probe = new FileStream(
@@ -107,7 +116,7 @@ WHERE d.name = @databaseName;
 
         try
         {
-            var fullPath = Path.GetFullPath(request.BackupDirectory);
+            var fullPath = Path.GetFullPath(databaseDirectory);
             var root = Path.GetPathRoot(fullPath);
             if (!string.IsNullOrWhiteSpace(root))
                 destinationFreeBytes = new DriveInfo(root).AvailableFreeSpace;
@@ -144,7 +153,9 @@ WHERE d.name = @databaseName;
     {
         var databaseName = request.Connection.DatabaseName;
         var fileName = BackupNaming.Create(databaseName);
-        var backupPath = Path.Combine(request.BackupDirectory, fileName);
+        var databaseDirectory = GetDatabaseBackupDirectory(request);
+        Directory.CreateDirectory(databaseDirectory);
+        var backupPath = Path.Combine(databaseDirectory, fileName);
 
         await using var connection = new SqlConnection(BuildConnectionString(request.Connection, "master"));
         await connection.OpenAsync(cancellationToken);
@@ -224,6 +235,9 @@ WHERE d.name = @databaseName;
         return value is null or DBNull ? 0 : Convert.ToInt64(value);
     }
 
+    private static string GetDatabaseBackupDirectory(BackupExecutionRequest request) =>
+        Path.Combine(request.BackupDirectory, BackupNaming.SafeSegment(request.Connection.DatabaseName));
+
     private static bool IsUncPath(string path) =>
         OperatingSystem.IsWindows() &&
         path.TrimStart().StartsWith(@"\\", StringComparison.Ordinal);
@@ -281,9 +295,4 @@ WHERE d.name = @databaseName;
         return builder.ConnectionString;
     }
 
-    private static string SanitizeFileName(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        return string.Concat(value.Select(ch => invalid.Contains(ch) ? '_' : ch));
-    }
 }

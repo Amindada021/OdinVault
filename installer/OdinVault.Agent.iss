@@ -1,6 +1,6 @@
 #define MyAppName "OdinVault"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.23"
+  #define MyAppVersion "0.2.24"
 #endif
 #define MyAppPublisher "OdinVault"
 #define AgentExeName "OdinVault.Agent.exe"
@@ -52,6 +52,7 @@ Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; Flags: runhidden w
 Filename: "{app}\Manager\{#ManagerExeName}"; Description: "اجرای OdinVault Manager"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+Filename: "{sys}\\sc.exe"; Parameters: "config {#ServiceName} start= disabled"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\sc.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\sc.exe"; Parameters: "delete {#ServiceName}"; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""OdinVault Agent"""; Flags: runhidden waituntilterminated
