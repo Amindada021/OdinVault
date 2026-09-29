@@ -1,6 +1,6 @@
 #define MyAppName "OdinVault"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.24"
+  #define MyAppVersion "0.2.25"
 #endif
 #define MyAppPublisher "OdinVault"
 #define AgentExeName "OdinVault.Agent.exe"
@@ -49,7 +49,7 @@ Name: "desktopicon"; Description: "ایجاد میانبر OdinVault Manager ر�
 [Run]
 Filename: "{sys}\sc.exe"; Parameters: "create {#ServiceName} binPath= ""{app}\Agent\{#AgentExeName}"" start= auto DisplayName= ""OdinVault Agent"""; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "description {#ServiceName} ""OdinVault database backup and replication agent"""; Flags: runhidden waituntilterminated
-Filename: "{sys}\sc.exe"; Parameters: "failure {#ServiceName} reset= 86400 actions= restart/60000/restart/300000/restart/900000"; Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "failure {#ServiceName} reset= 86400 actions= restart/5000/restart/30000/restart/60000"; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "failureflag {#ServiceName} 1"; Flags: runhidden waituntilterminated
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""OdinVault Agent"" dir=in action=allow protocol=TCP localport=5188"; Flags: runhidden waituntilterminated
 Filename: "{sys}\sc.exe"; Parameters: "start {#ServiceName}"; Flags: runhidden waituntilterminated

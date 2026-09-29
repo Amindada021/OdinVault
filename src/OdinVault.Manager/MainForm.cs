@@ -4124,7 +4124,7 @@ internal sealed class EditDatabaseForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(620, 660);
+        ClientSize = new Size(620, 790);
         Font = new Font("Segoe UI", 10F);
         RightToLeft = RightToLeft.Yes;
         RightToLeftLayout = true;
@@ -4176,7 +4176,7 @@ internal sealed class EditDatabaseForm : Form
         AddField(panel, 5, hasPassword ? "Password (خالی = بدون تغییر)" : "Password", _password);
         AddField(panel, 6, "پوشه اصلی بکاپ‌ها", _backupDirectory);
         AddField(panel, 7, "تعداد نگهداری", _maxBackups);
-        AddField(panel, 8, "زمان‌بندی", _schedule);
+        AddField(panel, 8, "زمان‌بندی", _schedule, 175);
 
         var checks = new FlowLayoutPanel
         {
@@ -4264,9 +4264,9 @@ internal sealed class EditDatabaseForm : Form
         Close();
     }
 
-    private static void AddField(TableLayoutPanel panel, int row, string label, Control control)
+    private static void AddField(TableLayoutPanel panel, int row, string label, Control control, float height = 43)
     {
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
         var caption = new Label
         {
             Text = label,
@@ -4307,7 +4307,7 @@ internal sealed class AddDatabaseForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(570, 610);
+        ClientSize = new Size(570, 740);
         Font = new Font("Segoe UI", 10F);
         RightToLeft = RightToLeft.Yes;
         RightToLeftLayout = true;
@@ -4330,7 +4330,7 @@ internal sealed class AddDatabaseForm : Form
         AddField(panel, 5, "Password", _password);
         AddField(panel, 6, "پوشه اصلی بکاپ‌ها", _backupDirectory);
         AddField(panel, 7, "تعداد فایل محلی", _maxBackups);
-        AddField(panel, 8, "زمان‌بندی", _schedule);
+        AddField(panel, 8, "زمان‌بندی", _schedule, 175);
 
         var checks = new FlowLayoutPanel
         {
@@ -4375,9 +4375,9 @@ internal sealed class AddDatabaseForm : Form
         UiLayout.Apply(this);
     }
 
-    private static void AddField(TableLayoutPanel panel, int row, string label, Control control)
+    private static void AddField(TableLayoutPanel panel, int row, string label, Control control, float height = 43)
     {
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
 
         var caption = new Label
         {
