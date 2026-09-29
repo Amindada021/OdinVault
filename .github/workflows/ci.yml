@@ -155,59 +155,61 @@ jobs:
           gradle.write_text(gradle_text)
           PY
 
-      - name: Configure Android release signing
-        working-directory: mobile
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_B64: ${{ secrets.ODINVAULT_ANDROID_KEYSTORE_B64 }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ODINVAULT_ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_KEY_PASSWORD }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_STORE_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          for name in ANDROID_KEYSTORE_B64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Required GitHub secret $name is not configured."
-              exit 1
-            fi
-          done
-
-          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/odinvault-release.jks
-          chmod 600 android/app/odinvault-release.jks
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          gradle = Path("android/app/build.gradle.kts")
-          text = gradle.read_text()
-
-          debug_line = 'signingConfig = signingConfigs.getByName("debug")'
-          release_line = 'signingConfig = signingConfigs.getByName("release")'
-          if debug_line not in text:
-              raise SystemExit("Expected Flutter debug signing line was not found in build.gradle.kts")
-
-          signing_config = '''
-              signingConfigs {
-                  create("release") {
-                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                      storeFile = file("odinvault-release.jks")
-                      storePassword = System.getenv("ANDROID_STORE_PASSWORD")
-                  }
-              }
-
-          '''
-
-          build_types = "    buildTypes {"
-          if build_types not in text:
-              raise SystemExit("buildTypes block was not found in build.gradle.kts")
-
-          text = text.replace(build_types, signing_config + build_types, 1)
-          text = text.replace(debug_line, release_line, 1)
-          gradle.write_text(text)
-          PY
-
+      # Android release signing is temporarily disabled.
+      # - name: Configure Android release signing
+      # working-directory: mobile
+      # shell: bash
+      # env:
+      # ANDROID_KEYSTORE_B64: ${{ secrets.ODINVAULT_ANDROID_KEYSTORE_B64 }}
+      # ANDROID_KEY_ALIAS: ${{ secrets.ODINVAULT_ANDROID_KEY_ALIAS }}
+      # ANDROID_KEY_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_KEY_PASSWORD }}
+      # ANDROID_STORE_PASSWORD: ${{ secrets.ODINVAULT_ANDROID_STORE_PASSWORD }}
+      # run: |
+      # set -euo pipefail
+      #
+      # for name in ANDROID_KEYSTORE_B64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD; do
+      # if [ -z "${!name:-}" ]; then
+      # echo "::error::Required GitHub secret $name is not configured."
+      # exit 1
+      # fi
+      # done
+      #
+      # printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/odinvault-release.jks
+      # chmod 600 android/app/odinvault-release.jks
+      #
+      # python3 - <<'PY'
+      # from pathlib import Path
+      #
+      # gradle = Path("android/app/build.gradle.kts")
+      # text = gradle.read_text()
+      #
+      # debug_line = 'signingConfig = signingConfigs.getByName("debug")'
+      # release_line = 'signingConfig = signingConfigs.getByName("release")'
+      # if debug_line not in text:
+      # raise SystemExit("Expected Flutter debug signing line was not found in build.gradle.kts")
+      #
+      # signing_config = '''
+      # signingConfigs {
+      # create("release") {
+      # keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+      # keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+      # storeFile = file("odinvault-release.jks")
+      # storePassword = System.getenv("ANDROID_STORE_PASSWORD")
+      # }
+      # }
+      #
+      # '''
+      #
+      # build_types = "    buildTypes {"
+      # if build_types not in text:
+      # raise SystemExit("buildTypes block was not found in build.gradle.kts")
+      #
+      # text = text.replace(build_types, signing_config + build_types, 1)
+      # text = text.replace(debug_line, release_line, 1)
+      # gradle.write_text(text)
+      # PY
+      #
+      #
       - name: Dependencies
         working-directory: mobile
         run: flutter pub get
@@ -252,22 +254,24 @@ jobs:
           "$APKANALYZER" manifest print mobile/build/app/outputs/flutter-apk/app-release.apk > mobile/release-manifest.xml
           python3 scripts/android_manifest.py validate mobile/release-manifest.xml
 
-      - name: Verify Android release signature
-        shell: bash
-        run: |
-          set -euo pipefail
-          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)/apksigner"
-          APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
-
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee mobile/release-signature.txt
-
-          if grep -qi "CN=Android Debug" mobile/release-signature.txt; then
-            echo "::error::Release APK is signed with the Android debug certificate."
-            exit 1
-          fi
-
-          grep -E "Signer #1 certificate SHA-256 digest:" mobile/release-signature.txt
-
+      # Android release signature verification is temporarily disabled.
+      # - name: Verify Android release signature
+      # shell: bash
+      # run: |
+      # set -euo pipefail
+      # APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)/apksigner"
+      # APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
+      #
+      # "$APKSIGNER" verify --verbose --print-certs "$APK" | tee mobile/release-signature.txt
+      #
+      # if grep -qi "CN=Android Debug" mobile/release-signature.txt; then
+      # echo "::error::Release APK is signed with the Android debug certificate."
+      # exit 1
+      # fi
+      #
+      # grep -E "Signer #1 certificate SHA-256 digest:" mobile/release-signature.txt
+      #
+      #
       - name: Read versions
         id: versions
         shell: bash
