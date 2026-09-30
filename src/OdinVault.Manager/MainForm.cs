@@ -124,12 +124,6 @@ internal sealed class MainForm : Form
                 HideToTray(showNotification: false);
         };
 
-        Resize += (_, _) =>
-        {
-            if (WindowState == FormWindowState.Minimized && _settings.MinimizeToTray)
-                HideToTray(showNotification: false);
-        };
-
         FormClosing += (_, e) =>
         {
             if (!_allowExit &&
