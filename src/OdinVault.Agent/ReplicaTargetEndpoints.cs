@@ -21,27 +21,47 @@ public static class ReplicaTargetEndpoints
             if (!Uri.TryCreate(request.BaseUrl.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
                 return Results.BadRequest(new { message = "baseUrl must be an absolute HTTP or HTTPS URL." });
 
+            var baseUrl = request.BaseUrl.Trim().TrimEnd('/');
+            var apiKey = request.ApiKey.Trim();
+
+            if (request.TestConnection)
+            {
+                try
+                {
+                    var client = httpClientFactory.CreateClient("OdinVaultReplica");
+                    using var probe = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/databases");
+                    probe.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                    using var response = await client.SendAsync(probe, timeout.Token);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                        return Results.BadRequest(new { message = "کلید API سرور پشتیبان صحیح نیست." });
+
+                    if (!response.IsSuccessStatusCode)
+                        return Results.BadRequest(new { message = $"Agent سرور پشتیبان پاسخ نامعتبر داد (HTTP {(int)response.StatusCode})." });
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    return Results.BadRequest(new { message = "ارتباط با Agent سرور پشتیبان در مهلت تعیین‌شده برقرار نشد." });
+                }
+                catch (HttpRequestException ex)
+                {
+                    return Results.BadRequest(new { message = $"اتصال به Agent سرور پشتیبان برقرار نشد: {ex.Message}" });
+                }
+            }
+
             var target = new StorageTarget
             {
                 Name = request.Name.Trim(),
                 Type = StorageProviderType.OdinVaultReplica,
-                BaseUrl = request.BaseUrl.Trim().TrimEnd('/'),
-                ProtectedApiKey = protector.Protect(request.ApiKey),
+                BaseUrl = baseUrl,
+                ProtectedApiKey = protector.Protect(apiKey),
                 IsEnabled = request.IsEnabled
             };
 
             db.StorageTargets.Add(target);
             await db.SaveChangesAsync(ct);
-
-            if (request.TestConnection)
-            {
-                var client = httpClientFactory.CreateClient("OdinVaultReplica");
-                using var health = new HttpRequestMessage(HttpMethod.Get, $"{target.BaseUrl}/api/databases");
-                health.Headers.TryAddWithoutValidation("X-OdinVault-Key", request.ApiKey);
-                using var response = await client.SendAsync(health, ct);
-                if (!response.IsSuccessStatusCode)
-                    return Results.Created($"/api/storage-targets/{target.Id}", new { target.Id, target.Name, target.Type, target.BaseUrl, target.IsEnabled, testSucceeded = false });
-            }
 
             return Results.Created($"/api/storage-targets/{target.Id}", new { target.Id, target.Name, target.Type, target.BaseUrl, target.IsEnabled, testSucceeded = request.TestConnection ? true : (bool?)null });
         });
