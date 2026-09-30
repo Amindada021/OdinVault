@@ -66,7 +66,7 @@ internal sealed record ReceivedBackupResponse(string FileName,string RelativePat
 internal sealed record UpdateStorageTargetClientRequest(string Name,string? FolderId,bool IsEnabled,string? BaseUrl,string? ApiKey);
 internal sealed record AgentEndpointProbeResult(bool Success,string Message);
 internal sealed record PortProbeResult(bool IsOpen,double? LatencyMilliseconds,string? Error);
-internal sealed record HealthResponse(string? Service,string? Status,DateTime Utc);
+internal sealed record HealthResponse(string? Service,string? Status,string? ProtectionStatus,DateTime Utc);
 internal sealed record DashboardResponse(DateTime Utc,string Status,string ProtectionStatus,int EnabledDatabases,int ProtectedDatabases,int ActiveJobs,int FailedJobsLast24Hours,long? StorageFreeBytes,IReadOnlyList<DashboardAttentionResponse> Attention,IReadOnlyList<DashboardActivityResponse> RecentActivity);
 internal sealed record DashboardAttentionResponse(string Severity,Guid DatabaseId,string DatabaseName,string Title,string Message,DateTime? OccurredAtUtc);
 internal sealed record DashboardActivityResponse(Guid DatabaseId,string DatabaseName,Guid BackupId,int Status,int VerificationStatus,long? SizeBytes,DateTime StartedAtUtc,DateTime? CompletedAtUtc,string? Error);
