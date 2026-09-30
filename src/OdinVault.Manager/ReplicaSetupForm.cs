@@ -65,6 +65,20 @@ internal sealed class ReplicaSetupForm : Form
         var testConnection = new Button { Text = "تست اتصال", AutoSize = true };
         testConnection.Click += async (_, _) => await Run(async () =>
         {
+            if (targets.SelectedItem is ReplicaTargetResponse selected &&
+                string.IsNullOrWhiteSpace(key.Text) &&
+                string.Equals(selected.BaseUrl?.TrimEnd('/'), url.Text.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            {
+                var savedResult = await api.SendAsync<StorageConnectionTestResponse>(
+                    HttpMethod.Post,
+                    $"api/storage-targets/{selected.Id}/connection-test");
+
+                status.Text = savedResult.Success
+                    ? $"✓ {savedResult.Message}"
+                    : $"✕ {savedResult.Message}";
+                return;
+            }
+
             var result = await api.SendAsync<ReplicaConnectionTestResponse>(
                 HttpMethod.Post,
                 "api/storage-targets/odinvault-replica/test-connection",
