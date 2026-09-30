@@ -3069,6 +3069,8 @@ class StorageTargetDialog extends StatefulWidget {
 class _StorageTargetDialogState extends State<StorageTargetDialog> {
   late final name = TextEditingController(text: widget.target.name);
   late final folder = TextEditingController(text: widget.target.folderId ?? '');
+  late final replicaUrl = TextEditingController(text: widget.target.baseUrl ?? '');
+  final replicaKey = TextEditingController();
   late bool enabled = widget.target.isEnabled;
   bool busy = false;
   bool testing = false;
@@ -3078,6 +3080,8 @@ class _StorageTargetDialogState extends State<StorageTargetDialog> {
   void dispose() {
     name.dispose();
     folder.dispose();
+    replicaUrl.dispose();
+    replicaKey.dispose();
     super.dispose();
   }
 
@@ -3094,6 +3098,10 @@ class _StorageTargetDialogState extends State<StorageTargetDialog> {
             ? folder.text.trim()
             : null,
         isEnabled: enabled,
+        baseUrl: widget.target.type == 5 ? replicaUrl.text.trim() : null,
+        apiKey: widget.target.type == 5 && replicaKey.text.trim().isNotEmpty
+            ? replicaKey.text.trim()
+            : null,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -3141,12 +3149,2345 @@ class _StorageTargetDialogState extends State<StorageTargetDialog> {
       error = null;
     });
     try {
-      await widget.api.testReplicaTarget(widget.target.id);
+      final currentUrl = replicaUrl.text.trim();
+      final newKey = replicaKey.text.trim();
+
+      final result = newKey.isEmpty &&
+              currentUrl.replaceAll(RegExp(r'/
+      if (mounted) setState(() => testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.target.type == 2 ? 'تنظیمات Google Drive' : 'تنظیمات Agent ثانویه'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'نام مقصد'),
+              ),
+              if (widget.target.type == 2) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: folder,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(labelText: 'شناسه پوشه'),
+                ),
+                if (widget.target.accountEmail != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text('حساب: ${widget.target.accountEmail}'),
+                  ),
+                ],
+              ],
+              SwitchListTile(
+                value: enabled,
+                onChanged: busy || testing
+                    ? null
+                    : (value) => setState(() => enabled = value),
+                title: const Text('فعال'),
+              ),
+              if (widget.target.type == 5) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: replicaUrl,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(
+                    labelText: 'آدرس Agent مقصد',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: replicaKey,
+                  obscureText: true,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(
+                    labelText: 'کلید API جدید (اختیاری)',
+                    helperText: 'اگر خالی بماند، کلید فعلی حفظ می‌شود.',
+                  ),
+                ),
+              ],
+              if (widget.target.type == 5)
+                OutlinedButton.icon(
+                  onPressed: busy || testing ? null : testReplica,
+                  icon: testing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cable),
+                  label: Text(
+                    testing ? 'در حال تست...' : 'تست اتصال Agent ثانویه',
+                  ),
+                ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy || testing ? null : remove,
+            child: const Text('حذف مقصد'),
+          ),
+          TextButton(
+            onPressed: busy || testing ? null : () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: busy || testing ? null : save,
+            child: Text(busy ? 'در حال ذخیره...' : 'ذخیره'),
+          ),
+        ],
+      );
+}
+
+class ReplicaTargetDialog extends StatefulWidget {
+  const ReplicaTargetDialog({super.key, required this.api});
+
+  final OdinVaultApiClient api;
+
+  @override
+  State<ReplicaTargetDialog> createState() => _ReplicaTargetDialogState();
+}
+
+class _ReplicaTargetDialogState extends State<ReplicaTargetDialog> {
+  final name = TextEditingController();
+  final url = TextEditingController(text: 'http://');
+  final key = TextEditingController();
+  bool busy = false;
+  bool testing = false;
+  String? error;
+
+  @override
+  void dispose() {
+    name.dispose();
+    url.dispose();
+    key.dispose();
+    super.dispose();
+  }
+
+  Future<void> testConnection() async {
+    if (testing || busy) return;
+    setState(() {
+      testing = true;
+      error = null;
+    });
+
+    try {
+      final result = await widget.api.testReplicaConnection(
+        baseUrl: url.text.trim(),
+        apiKey: key.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(result.success ? 'تست اتصال موفق' : 'تست اتصال ناموفق'),
+          content: Text(
+            result.message.isEmpty
+                ? (result.success ? 'ارتباط با Agent مقصد برقرار است.' : 'ارتباط برقرار نشد.')
+                : result.message,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('بستن'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => error = OdinVaultApiException.from(e).message);
+    } finally {
+      if (mounted) setState(() => testing = false);
+    }
+  }
+
+  Future<void> save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.api.createReplicaTarget(
+        name: name.text.trim(),
+        baseUrl: url.text.trim(),
+        apiKey: key.text.trim(),
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => error = OdinVaultApiException.from(e).message);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('افزودن OdinVault Agent ثانویه'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'نام')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: url,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(labelText: 'آدرس Agent'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: key,
+                obscureText: true,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(labelText: 'کلید API'),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy || testing ? null : () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          OutlinedButton(
+            onPressed: busy || testing ? null : testConnection,
+            child: Text(testing ? 'در حال تست...' : 'تست اتصال'),
+          ),
+          FilledButton(
+            onPressed: busy || testing ? null : save,
+            child: Text(busy ? 'در حال ذخیره...' : 'ذخیره مقصد'),
+          ),
+        ],
+      );
+}
+
+class GoogleDriveDialog extends StatefulWidget {
+  const GoogleDriveDialog({super.key});
+
+  @override
+  State<GoogleDriveDialog> createState() => _GoogleDriveDialogState();
+}
+
+class _GoogleDriveDialogState extends State<GoogleDriveDialog> {
+  final name = TextEditingController(text: 'Google Drive');
+  final folder = TextEditingController();
+
+  @override
+  void dispose() {
+    name.dispose();
+    folder.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('اتصال Google Drive'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'نام مقصد')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: folder,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(
+                  labelText: 'شناسه پوشه (اختیاری)',
+                  helperText: 'اگر خالی باشد، تنظیم پیش‌فرض Agent استفاده می‌شود.',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              _GoogleRequest(
+                name.text.trim().isEmpty ? 'Google Drive' : name.text.trim(),
+                folder.text.trim().isEmpty ? null : folder.text.trim(),
+              ),
+            ),
+            child: const Text('اتصال به Google'),
+          ),
+        ],
+      );
+}
+
+class _GoogleRequest {
+  const _GoogleRequest(this.name, this.folderId);
+
+  final String name;
+  final String? folderId;
+}
+
+class _PairingProgressDialog extends StatelessWidget {
+  const _PairingProgressDialog();
+
+  @override
+  Widget build(BuildContext context) => const AlertDialog(
+        title: Text('در حال اتصال Google Drive'),
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text('ورود به حساب Google را در مرورگر کامل کنید و سپس به برنامه برگردید.'),
+            ),
+          ],
+        ),
+      );
+}
+
+class BackupTile extends StatefulWidget {
+  const BackupTile({
+    super.key,
+    required this.api,
+    required this.backup,
+  });
+
+  final OdinVaultApiClient api;
+  final OdinVaultBackup backup;
+
+  @override
+  State<BackupTile> createState() => _BackupTileState();
+}
+
+class _BackupTileState extends State<BackupTile> {
+  List<OdinVaultReplica>? replicas;
+  bool loadingReplicas = false;
+  bool retrying = false;
+  String? replicaLoadError;
+
+  Future<void> load() async {
+    if (loadingReplicas) return;
+    setState(() {
+      loadingReplicas = true;
+      replicaLoadError = null;
+    });
+    try {
+      final value = await widget.api.replicas(widget.backup.id);
+      if (mounted) setState(() => replicas = value);
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اتصال Agent ثانویه سالم است.')),
-        );
+        setState(() {
+          replicaLoadError = OdinVaultApiException.from(e).message;
+        });
       }
+    } finally {
+      if (mounted) setState(() => loadingReplicas = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backup = widget.backup;
+    return Card(
+      child: ExpansionTile(
+        onExpansionChanged: (expanded) {
+          if (expanded && replicas == null) load();
+        },
+        leading: Icon(
+          backup.status == 2 ? Icons.check_circle_outline : Icons.error_outline,
+        ),
+        title: Text(
+          backup.fileName.isEmpty ? backup.id.substring(0, 8) : backup.fileName,
+          textDirection: TextDirection.ltr,
+        ),
+        subtitle: Text(
+          '${_bytes(backup.sizeBytes)} • ${_formatDate(backup.completedAtUtc ?? backup.startedAtUtc)}',
+        ),
+        children: [
+          if (backup.status == 2 && backup.localFileAvailable)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton.icon(
+                onPressed: () => showBackupDownload(
+                  context,
+                  widget.api,
+                  backup: backup,
+                ),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('دانلود این بکاپ روی گوشی'),
+              ),
+            )
+          else if (backup.status == 2)
+            const ListTile(
+              title: Text('نسخه محلی این بکاپ دیگر روی سرور موجود نیست.'),
+            ),
+          ListTile(
+            title: const Text('Verify'),
+            trailing: Text(_verificationText(backup.verificationStatus)),
+          ),
+          if (backup.error != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                backup.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (loadingReplicas)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: LinearProgressIndicator(),
+            )
+          else if (replicaLoadError != null)
+            ListTile(
+              leading: const Icon(Icons.error_outline),
+              title: const Text('دریافت وضعیت Replica ناموفق بود'),
+              subtitle: Text(replicaLoadError!),
+              trailing: IconButton(
+                tooltip: 'تلاش مجدد',
+                onPressed: load,
+                icon: const Icon(Icons.refresh),
+              ),
+            )
+          else if (replicas?.isEmpty ?? false)
+            const ListTile(
+              leading: Icon(Icons.cloud_off_outlined),
+              title: Text('کپی ثانویه‌ای برای این بکاپ ثبت نشده'),
+            )
+          else if (replicas != null)
+            ...replicas!.map(
+              (replica) => ListTile(
+                leading: Icon(
+                  replica.status == 2 ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                ),
+                title: Text('Replica ${replica.storageTargetId.substring(0, 8)}'),
+                subtitle: Text(replica.error ?? replica.remotePath ?? 'ذخیره شده'),
+              ),
+            ),
+          if (backup.status == 2)
+            TextButton.icon(
+              onPressed: retrying
+                  ? null
+                  : () async {
+                      setState(() => retrying = true);
+                      try {
+                        await widget.api.retryReplication(backup.id);
+                        await load();
+                        if (!mounted || !context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('ارسال مجدد به مقصدها انجام شد.'),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!mounted || !context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              OdinVaultApiException.from(e).message,
+                            ),
+                          ),
+                        );
+                      } finally {
+                        if (mounted) setState(() => retrying = false);
+                      }
+                    },
+              icon: retrying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(
+                retrying
+                    ? 'در حال ارسال مجدد...'
+                    : 'تلاش مجدد برای ارسال به مقصدها',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DatabaseStatusCard extends StatelessWidget {
+  const _DatabaseStatusCard({
+    required this.database,
+    required this.overview,
+    required this.selected,
+    required this.onSelected,
+    required this.onOpen,
+    required this.onEdit,
+  });
+
+  final OdinVaultDatabase database;
+  final OdinVaultDatabaseOverview? overview;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentOverview = overview;
+    final latestOk = currentOverview?.latestBackupStatus == 2;
+    final protected = currentOverview?.isProtected == true;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+          child: Row(
+            children: [
+              Checkbox(
+                value: selected,
+                onChanged: (value) => onSelected(value == true),
+              ),
+              Icon(
+                !database.isEnabled
+                    ? Icons.pause_circle_outline
+                    : currentOverview?.latestBackupAtUtc == null
+                        ? Icons.schedule_outlined
+                        : protected && latestOk
+                            ? Icons.shield_outlined
+                            : Icons.warning_amber_outlined,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(database.name, style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      '${database.databaseName} • ${ScheduleValue.displayCron(database.scheduleCron)}',
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      currentOverview == null
+                          ? 'خلاصه وضعیت در دسترس نیست'
+                          : currentOverview.latestBackupAtUtc == null
+                              ? 'هنوز بکاپی ثبت نشده'
+                              : 'آخرین بکاپ: ${_formatDate(currentOverview.latestBackupAtUtc)} • ${_bytes(currentOverview.latestBackupSizeBytes)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (currentOverview != null)
+                      Text(
+                        protected
+                            ? 'وضعیت حفاظت: محافظت‌شده'
+                            : 'وضعیت حفاظت: نیازمند توجه',
+                        style: TextStyle(
+                          color: protected
+                              ? null
+                              : Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'ویرایش',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectionBadge extends StatelessWidget {
+  const _ConnectionBadge({required this.health});
+
+  final bool? health;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = health == true
+        ? 'آنلاین'
+        : health == false
+            ? 'آفلاین'
+            : 'در حال بررسی';
+    final icon = health == true
+        ? Icons.check_circle
+        : health == false
+            ? Icons.error_outline
+            : Icons.schedule;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16),
+        const SizedBox(width: 4),
+        Text(text, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _StateMessage extends StatelessWidget {
+  const _StateMessage({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.actionText,
+    required this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String actionText;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 56),
+              const SizedBox(height: 14),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.refresh),
+                label: Text(actionText),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _AgentQuickActions extends StatelessWidget {
+  const _AgentQuickActions({
+    required this.onBackups,
+    required this.onStorage,
+    required this.onReports,
+  });
+
+  final VoidCallback onBackups;
+  final VoidCallback onStorage;
+  final VoidCallback onReports;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.restore_page_outlined,
+              label: 'بکاپ‌ها',
+              onTap: onBackups,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.cloud_queue_outlined,
+              label: 'فضای ذخیره',
+              onTap: onStorage,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.analytics_outlined,
+              label: 'گزارش‌ها',
+              onTap: onReports,
+            ),
+          ),
+        ],
+      );
+}
+
+class _QuickActionButton extends StatelessWidget {
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center),
+          ],
+        ),
+      );
+}
+
+class _ReportMetricCard extends StatelessWidget {
+  const _ReportMetricCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 155,
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon),
+                const SizedBox(height: 10),
+                Text(
+                  value,
+                  textDirection: TextDirection.ltr,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(title, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _DatabaseProtectionCard extends StatelessWidget {
+  const _DatabaseProtectionCard({required this.details});
+
+  final OdinVaultDatabaseDetails? details;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = details;
+    if (value == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: LinearProgressIndicator(),
+        ),
+      );
+    }
+
+    final protection = value.protection;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  protection.isProtected
+                      ? Icons.shield_outlined
+                      : Icons.gpp_bad_outlined,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'وضعیت حفاظت',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  protection.isProtected ? 'محافظت‌شده' : 'نیازمند توجه',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: protection.isProtected
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _InfoRow(
+              label: 'آخرین بکاپ',
+              value: _formatDate(protection.latestBackupAtUtc),
+            ),
+            _InfoRow(
+              label: 'حجم آخرین بکاپ',
+              value: _bytes(protection.latestBackupSizeBytes),
+            ),
+            _InfoRow(
+              label: 'Verify',
+              value: protection.latestVerificationStatus == null
+                  ? '-'
+                  : _verificationText(protection.latestVerificationStatus!),
+            ),
+            _InfoRow(
+              label: 'Replica',
+              value: '${protection.latestReplicaSucceeded}/${protection.latestReplicaTotal}',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardOverviewCard extends StatelessWidget {
+  const _DashboardOverviewCard({
+    required this.dashboard,
+    required this.alerts,
+  });
+
+  final OdinVaultDashboard? dashboard;
+  final OdinVaultAlerts? alerts;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = dashboard;
+    if (value == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: LinearProgressIndicator(),
+        ),
+      );
+    }
+
+    final protectionOk = value.enabledDatabases == 0 ||
+        value.protectedDatabases >= value.enabledDatabases;
+    final attention = value.attention.take(3).toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  protectionOk ? Icons.shield_outlined : Icons.shield_moon_outlined,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'وضعیت Agent',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  protectionOk ? 'محافظت‌شده' : 'نیازمند توجه',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: protectionOk
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 18,
+              runSpacing: 12,
+              children: [
+                _MiniMetric(
+                  value: '${value.protectedDatabases}/${value.enabledDatabases}',
+                  label: 'دیتابیس محافظت‌شده',
+                ),
+                _MiniMetric(
+                  value: '${value.activeJobs}',
+                  label: 'عملیات فعال',
+                ),
+                _MiniMetric(
+                  value: '${value.failedJobsLast24Hours}',
+                  label: 'خطای ۲۴ ساعت',
+                ),
+                _MiniMetric(
+                  value: _bytes(value.storageFreeBytes),
+                  label: 'فضای آزاد',
+                ),
+                _MiniMetric(
+                  value: '${alerts?.unreadCount ?? 0}',
+                  label: 'هشدار خوانده‌نشده',
+                ),
+              ],
+            ),
+            if (attention.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text(
+                'نیازمند توجه',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              ...attention.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.databaseName.isEmpty
+                              ? item.title
+                              : '${item.databaseName}: ${item.title}',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({
+    required this.value,
+    required this.label,
+  });
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 118,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              textDirection: TextDirection.ltr,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      );
+}
+
+class _AgentSummaryCard extends StatelessWidget {
+  const _AgentSummaryCard({
+    required this.databaseCount,
+    required this.googleDriveCount,
+    required this.selectedCount,
+    required this.loading,
+  });
+
+  final int databaseCount;
+  final int googleDriveCount;
+  final int selectedCount;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: loading
+              ? const LinearProgressIndicator()
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.storage,
+                        value: '$databaseCount',
+                        label: 'دیتابیس',
+                      ),
+                    ),
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.cloud_done_outlined,
+                        value: '$googleDriveCount',
+                        label: 'Google Drive',
+                      ),
+                    ),
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.check_box_outlined,
+                        value: '$selectedCount',
+                        label: 'انتخاب‌شده',
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      );
+}
+
+class _SummaryItem extends StatelessWidget {
+  const _SummaryItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Icon(icon),
+          const SizedBox(height: 4),
+          Text(value, style: Theme.of(context).textTheme.titleLarge),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+        child: Column(
+          children: [
+            Icon(icon, size: 48),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(subtitle, textAlign: TextAlign.center),
+          ],
+        ),
+      );
+}
+
+String _backupStageText(String stage, int? percent) {
+  final suffix = percent == null ? '' : ' • $percent٪';
+  return switch (stage.toLowerCase()) {
+    'queued' => 'در صف بکاپ$suffix',
+    'backup' => 'در حال ساخت بکاپ$suffix',
+    'verify' => 'در حال بررسی سلامت فایل$suffix',
+    'replicating' => 'در حال ارسال به مقصدهای پشتیبان$suffix',
+    'complete' => 'بکاپ تکمیل شد',
+    'failed' => 'بکاپ ناموفق',
+    'interrupted' => 'عملیات متوقف شد',
+    _ => stage.isEmpty ? 'در حال انجام...' : '$stage$suffix',
+  };
+}
+
+String _restoreUnavailableReason(OdinVaultBackupHistoryItem backup) {
+  if (backup.status != 2) return 'فقط بکاپ موفق قابل Restore است.';
+  if (!backup.localFileAvailable) {
+    return 'فایل محلی این بکاپ روی Agent در دسترس نیست.';
+  }
+  return 'Restore برای این بکاپ در دسترس نیست.';
+}
+
+String _verificationText(int status) {
+  return switch (status) {
+    2 => 'موفق',
+    3 => 'ناموفق',
+    1 => 'در حال بررسی',
+    _ => 'انجام نشده',
+  };
+}
+
+String _bytes(int? value) {
+  if (value == null) return '-';
+  if (value < 1024) return '$value B';
+  if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
+  if (value < 1024 * 1024 * 1024) {
+    return '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+  return '${(value / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+}
+
+String _formatDateOnly(DateTime? value) {
+  if (value == null) return '-';
+  final local = value.toLocal();
+  final jalali = _toJalali(local.year, local.month, local.day);
+  String two(int x) => x.toString().padLeft(2, '0');
+  return _toPersianDigits(
+    '${jalali.$1}/${two(jalali.$2)}/${two(jalali.$3)}',
+  );
+}
+
+String _formatDate(DateTime? value) {
+  if (value == null) return '-';
+  final local = value.toLocal();
+  final jalali = _toJalali(local.year, local.month, local.day);
+  String two(int x) => x.toString().padLeft(2, '0');
+  return _toPersianDigits(
+    '${jalali.$1}/${two(jalali.$2)}/${two(jalali.$3)}  '
+    '${two(local.hour)}:${two(local.minute)}',
+  );
+}
+
+(int, int, int) _toJalali(int year, int month, int day) {
+  var gy = year - 1600;
+  final gm = month - 1;
+  final gd = day - 1;
+
+  var gDayNo = 365 * gy +
+      ((gy + 3) ~/ 4) -
+      ((gy + 99) ~/ 100) +
+      ((gy + 399) ~/ 400);
+
+  const gDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  for (var i = 0; i < gm; i++) {
+    gDayNo += gDays[i];
+  }
+
+  final leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  if (gm > 1 && leap) gDayNo++;
+  gDayNo += gd;
+
+  var jDayNo = gDayNo - 79;
+  final jNp = jDayNo ~/ 12053;
+  jDayNo %= 12053;
+
+  var jy = 979 + 33 * jNp + 4 * (jDayNo ~/ 1461);
+  jDayNo %= 1461;
+
+  if (jDayNo >= 366) {
+    jy += (jDayNo - 1) ~/ 365;
+    jDayNo = (jDayNo - 1) % 365;
+  }
+
+  const jDays = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+  var jm = 0;
+  while (jm < 11 && jDayNo >= jDays[jm]) {
+    jDayNo -= jDays[jm];
+    jm++;
+  }
+
+  return (jy, jm + 1, jDayNo + 1);
+}
+
+String _toPersianDigits(String value) {
+  const latin = '0123456789';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  var result = value;
+  for (var i = 0; i < latin.length; i++) {
+    result = result.replaceAll(latin[i], persian[i]);
+  }
+  return result;
+}
+), '') ==
+                  (widget.target.baseUrl ?? '').replaceAll(RegExp(r'/
+      if (mounted) setState(() => testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.target.type == 2 ? 'تنظیمات Google Drive' : 'تنظیمات Agent ثانویه'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'نام مقصد'),
+              ),
+              if (widget.target.type == 2) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: folder,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(labelText: 'شناسه پوشه'),
+                ),
+                if (widget.target.accountEmail != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text('حساب: ${widget.target.accountEmail}'),
+                  ),
+                ],
+              ],
+              SwitchListTile(
+                value: enabled,
+                onChanged: busy || testing
+                    ? null
+                    : (value) => setState(() => enabled = value),
+                title: const Text('فعال'),
+              ),
+              if (widget.target.type == 5)
+                OutlinedButton.icon(
+                  onPressed: busy || testing ? null : testReplica,
+                  icon: testing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cable),
+                  label: Text(
+                    testing ? 'در حال تست...' : 'تست اتصال Agent ثانویه',
+                  ),
+                ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy || testing ? null : remove,
+            child: const Text('حذف مقصد'),
+          ),
+          TextButton(
+            onPressed: busy || testing ? null : () => Navigator.pop(context),
+            child: const Text('انصراف'),
+          ),
+          FilledButton(
+            onPressed: busy || testing ? null : save,
+            child: Text(busy ? 'در حال ذخیره...' : 'ذخیره'),
+          ),
+        ],
+      );
+}
+
+class ReplicaTargetDialog extends StatefulWidget {
+  const ReplicaTargetDialog({super.key, required this.api});
+
+  final OdinVaultApiClient api;
+
+  @override
+  State<ReplicaTargetDialog> createState() => _ReplicaTargetDialogState();
+}
+
+class _ReplicaTargetDialogState extends State<ReplicaTargetDialog> {
+  final name = TextEditingController();
+  final url = TextEditingController(text: 'http://');
+  final key = TextEditingController();
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    name.dispose();
+    url.dispose();
+    key.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.api.createReplicaTarget(
+        name: name.text.trim(),
+        baseUrl: url.text.trim(),
+        apiKey: key.text.trim(),
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => error = OdinVaultApiException.from(e).message);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('افزودن OdinVault Agent ثانویه'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'نام')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: url,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(labelText: 'آدرس Agent'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: key,
+                obscureText: true,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(labelText: 'کلید API'),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(onPressed: busy ? null : save, child: const Text('ذخیره و تست')),
+        ],
+      );
+}
+
+class GoogleDriveDialog extends StatefulWidget {
+  const GoogleDriveDialog({super.key});
+
+  @override
+  State<GoogleDriveDialog> createState() => _GoogleDriveDialogState();
+}
+
+class _GoogleDriveDialogState extends State<GoogleDriveDialog> {
+  final name = TextEditingController(text: 'Google Drive');
+  final folder = TextEditingController();
+
+  @override
+  void dispose() {
+    name.dispose();
+    folder.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('اتصال Google Drive'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'نام مقصد')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: folder,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(
+                  labelText: 'شناسه پوشه (اختیاری)',
+                  helperText: 'اگر خالی باشد، تنظیم پیش‌فرض Agent استفاده می‌شود.',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              _GoogleRequest(
+                name.text.trim().isEmpty ? 'Google Drive' : name.text.trim(),
+                folder.text.trim().isEmpty ? null : folder.text.trim(),
+              ),
+            ),
+            child: const Text('اتصال به Google'),
+          ),
+        ],
+      );
+}
+
+class _GoogleRequest {
+  const _GoogleRequest(this.name, this.folderId);
+
+  final String name;
+  final String? folderId;
+}
+
+class _PairingProgressDialog extends StatelessWidget {
+  const _PairingProgressDialog();
+
+  @override
+  Widget build(BuildContext context) => const AlertDialog(
+        title: Text('در حال اتصال Google Drive'),
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text('ورود به حساب Google را در مرورگر کامل کنید و سپس به برنامه برگردید.'),
+            ),
+          ],
+        ),
+      );
+}
+
+class BackupTile extends StatefulWidget {
+  const BackupTile({
+    super.key,
+    required this.api,
+    required this.backup,
+  });
+
+  final OdinVaultApiClient api;
+  final OdinVaultBackup backup;
+
+  @override
+  State<BackupTile> createState() => _BackupTileState();
+}
+
+class _BackupTileState extends State<BackupTile> {
+  List<OdinVaultReplica>? replicas;
+  bool loadingReplicas = false;
+  bool retrying = false;
+  String? replicaLoadError;
+
+  Future<void> load() async {
+    if (loadingReplicas) return;
+    setState(() {
+      loadingReplicas = true;
+      replicaLoadError = null;
+    });
+    try {
+      final value = await widget.api.replicas(widget.backup.id);
+      if (mounted) setState(() => replicas = value);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          replicaLoadError = OdinVaultApiException.from(e).message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => loadingReplicas = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backup = widget.backup;
+    return Card(
+      child: ExpansionTile(
+        onExpansionChanged: (expanded) {
+          if (expanded && replicas == null) load();
+        },
+        leading: Icon(
+          backup.status == 2 ? Icons.check_circle_outline : Icons.error_outline,
+        ),
+        title: Text(
+          backup.fileName.isEmpty ? backup.id.substring(0, 8) : backup.fileName,
+          textDirection: TextDirection.ltr,
+        ),
+        subtitle: Text(
+          '${_bytes(backup.sizeBytes)} • ${_formatDate(backup.completedAtUtc ?? backup.startedAtUtc)}',
+        ),
+        children: [
+          if (backup.status == 2 && backup.localFileAvailable)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton.icon(
+                onPressed: () => showBackupDownload(
+                  context,
+                  widget.api,
+                  backup: backup,
+                ),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('دانلود این بکاپ روی گوشی'),
+              ),
+            )
+          else if (backup.status == 2)
+            const ListTile(
+              title: Text('نسخه محلی این بکاپ دیگر روی سرور موجود نیست.'),
+            ),
+          ListTile(
+            title: const Text('Verify'),
+            trailing: Text(_verificationText(backup.verificationStatus)),
+          ),
+          if (backup.error != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                backup.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (loadingReplicas)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: LinearProgressIndicator(),
+            )
+          else if (replicaLoadError != null)
+            ListTile(
+              leading: const Icon(Icons.error_outline),
+              title: const Text('دریافت وضعیت Replica ناموفق بود'),
+              subtitle: Text(replicaLoadError!),
+              trailing: IconButton(
+                tooltip: 'تلاش مجدد',
+                onPressed: load,
+                icon: const Icon(Icons.refresh),
+              ),
+            )
+          else if (replicas?.isEmpty ?? false)
+            const ListTile(
+              leading: Icon(Icons.cloud_off_outlined),
+              title: Text('کپی ثانویه‌ای برای این بکاپ ثبت نشده'),
+            )
+          else if (replicas != null)
+            ...replicas!.map(
+              (replica) => ListTile(
+                leading: Icon(
+                  replica.status == 2 ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                ),
+                title: Text('Replica ${replica.storageTargetId.substring(0, 8)}'),
+                subtitle: Text(replica.error ?? replica.remotePath ?? 'ذخیره شده'),
+              ),
+            ),
+          if (backup.status == 2)
+            TextButton.icon(
+              onPressed: retrying
+                  ? null
+                  : () async {
+                      setState(() => retrying = true);
+                      try {
+                        await widget.api.retryReplication(backup.id);
+                        await load();
+                        if (!mounted || !context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('ارسال مجدد به مقصدها انجام شد.'),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!mounted || !context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              OdinVaultApiException.from(e).message,
+                            ),
+                          ),
+                        );
+                      } finally {
+                        if (mounted) setState(() => retrying = false);
+                      }
+                    },
+              icon: retrying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(
+                retrying
+                    ? 'در حال ارسال مجدد...'
+                    : 'تلاش مجدد برای ارسال به مقصدها',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DatabaseStatusCard extends StatelessWidget {
+  const _DatabaseStatusCard({
+    required this.database,
+    required this.overview,
+    required this.selected,
+    required this.onSelected,
+    required this.onOpen,
+    required this.onEdit,
+  });
+
+  final OdinVaultDatabase database;
+  final OdinVaultDatabaseOverview? overview;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentOverview = overview;
+    final latestOk = currentOverview?.latestBackupStatus == 2;
+    final protected = currentOverview?.isProtected == true;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+          child: Row(
+            children: [
+              Checkbox(
+                value: selected,
+                onChanged: (value) => onSelected(value == true),
+              ),
+              Icon(
+                !database.isEnabled
+                    ? Icons.pause_circle_outline
+                    : currentOverview?.latestBackupAtUtc == null
+                        ? Icons.schedule_outlined
+                        : protected && latestOk
+                            ? Icons.shield_outlined
+                            : Icons.warning_amber_outlined,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(database.name, style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      '${database.databaseName} • ${ScheduleValue.displayCron(database.scheduleCron)}',
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      currentOverview == null
+                          ? 'خلاصه وضعیت در دسترس نیست'
+                          : currentOverview.latestBackupAtUtc == null
+                              ? 'هنوز بکاپی ثبت نشده'
+                              : 'آخرین بکاپ: ${_formatDate(currentOverview.latestBackupAtUtc)} • ${_bytes(currentOverview.latestBackupSizeBytes)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (currentOverview != null)
+                      Text(
+                        protected
+                            ? 'وضعیت حفاظت: محافظت‌شده'
+                            : 'وضعیت حفاظت: نیازمند توجه',
+                        style: TextStyle(
+                          color: protected
+                              ? null
+                              : Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'ویرایش',
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectionBadge extends StatelessWidget {
+  const _ConnectionBadge({required this.health});
+
+  final bool? health;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = health == true
+        ? 'آنلاین'
+        : health == false
+            ? 'آفلاین'
+            : 'در حال بررسی';
+    final icon = health == true
+        ? Icons.check_circle
+        : health == false
+            ? Icons.error_outline
+            : Icons.schedule;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16),
+        const SizedBox(width: 4),
+        Text(text, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _StateMessage extends StatelessWidget {
+  const _StateMessage({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.actionText,
+    required this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String actionText;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 56),
+              const SizedBox(height: 14),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.refresh),
+                label: Text(actionText),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _AgentQuickActions extends StatelessWidget {
+  const _AgentQuickActions({
+    required this.onBackups,
+    required this.onStorage,
+    required this.onReports,
+  });
+
+  final VoidCallback onBackups;
+  final VoidCallback onStorage;
+  final VoidCallback onReports;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.restore_page_outlined,
+              label: 'بکاپ‌ها',
+              onTap: onBackups,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.cloud_queue_outlined,
+              label: 'فضای ذخیره',
+              onTap: onStorage,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.analytics_outlined,
+              label: 'گزارش‌ها',
+              onTap: onReports,
+            ),
+          ),
+        ],
+      );
+}
+
+class _QuickActionButton extends StatelessWidget {
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center),
+          ],
+        ),
+      );
+}
+
+class _ReportMetricCard extends StatelessWidget {
+  const _ReportMetricCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 155,
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon),
+                const SizedBox(height: 10),
+                Text(
+                  value,
+                  textDirection: TextDirection.ltr,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(title, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _DatabaseProtectionCard extends StatelessWidget {
+  const _DatabaseProtectionCard({required this.details});
+
+  final OdinVaultDatabaseDetails? details;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = details;
+    if (value == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: LinearProgressIndicator(),
+        ),
+      );
+    }
+
+    final protection = value.protection;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  protection.isProtected
+                      ? Icons.shield_outlined
+                      : Icons.gpp_bad_outlined,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'وضعیت حفاظت',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  protection.isProtected ? 'محافظت‌شده' : 'نیازمند توجه',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: protection.isProtected
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _InfoRow(
+              label: 'آخرین بکاپ',
+              value: _formatDate(protection.latestBackupAtUtc),
+            ),
+            _InfoRow(
+              label: 'حجم آخرین بکاپ',
+              value: _bytes(protection.latestBackupSizeBytes),
+            ),
+            _InfoRow(
+              label: 'Verify',
+              value: protection.latestVerificationStatus == null
+                  ? '-'
+                  : _verificationText(protection.latestVerificationStatus!),
+            ),
+            _InfoRow(
+              label: 'Replica',
+              value: '${protection.latestReplicaSucceeded}/${protection.latestReplicaTotal}',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardOverviewCard extends StatelessWidget {
+  const _DashboardOverviewCard({
+    required this.dashboard,
+    required this.alerts,
+  });
+
+  final OdinVaultDashboard? dashboard;
+  final OdinVaultAlerts? alerts;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = dashboard;
+    if (value == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: LinearProgressIndicator(),
+        ),
+      );
+    }
+
+    final protectionOk = value.enabledDatabases == 0 ||
+        value.protectedDatabases >= value.enabledDatabases;
+    final attention = value.attention.take(3).toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  protectionOk ? Icons.shield_outlined : Icons.shield_moon_outlined,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'وضعیت Agent',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  protectionOk ? 'محافظت‌شده' : 'نیازمند توجه',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: protectionOk
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 18,
+              runSpacing: 12,
+              children: [
+                _MiniMetric(
+                  value: '${value.protectedDatabases}/${value.enabledDatabases}',
+                  label: 'دیتابیس محافظت‌شده',
+                ),
+                _MiniMetric(
+                  value: '${value.activeJobs}',
+                  label: 'عملیات فعال',
+                ),
+                _MiniMetric(
+                  value: '${value.failedJobsLast24Hours}',
+                  label: 'خطای ۲۴ ساعت',
+                ),
+                _MiniMetric(
+                  value: _bytes(value.storageFreeBytes),
+                  label: 'فضای آزاد',
+                ),
+                _MiniMetric(
+                  value: '${alerts?.unreadCount ?? 0}',
+                  label: 'هشدار خوانده‌نشده',
+                ),
+              ],
+            ),
+            if (attention.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text(
+                'نیازمند توجه',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              ...attention.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.databaseName.isEmpty
+                              ? item.title
+                              : '${item.databaseName}: ${item.title}',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({
+    required this.value,
+    required this.label,
+  });
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 118,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              textDirection: TextDirection.ltr,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      );
+}
+
+class _AgentSummaryCard extends StatelessWidget {
+  const _AgentSummaryCard({
+    required this.databaseCount,
+    required this.googleDriveCount,
+    required this.selectedCount,
+    required this.loading,
+  });
+
+  final int databaseCount;
+  final int googleDriveCount;
+  final int selectedCount;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: loading
+              ? const LinearProgressIndicator()
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.storage,
+                        value: '$databaseCount',
+                        label: 'دیتابیس',
+                      ),
+                    ),
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.cloud_done_outlined,
+                        value: '$googleDriveCount',
+                        label: 'Google Drive',
+                      ),
+                    ),
+                    Expanded(
+                      child: _SummaryItem(
+                        icon: Icons.check_box_outlined,
+                        value: '$selectedCount',
+                        label: 'انتخاب‌شده',
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      );
+}
+
+class _SummaryItem extends StatelessWidget {
+  const _SummaryItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        children: [
+          Icon(icon),
+          const SizedBox(height: 4),
+          Text(value, style: Theme.of(context).textTheme.titleLarge),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+        child: Column(
+          children: [
+            Icon(icon, size: 48),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(subtitle, textAlign: TextAlign.center),
+          ],
+        ),
+      );
+}
+
+String _backupStageText(String stage, int? percent) {
+  final suffix = percent == null ? '' : ' • $percent٪';
+  return switch (stage.toLowerCase()) {
+    'queued' => 'در صف بکاپ$suffix',
+    'backup' => 'در حال ساخت بکاپ$suffix',
+    'verify' => 'در حال بررسی سلامت فایل$suffix',
+    'replicating' => 'در حال ارسال به مقصدهای پشتیبان$suffix',
+    'complete' => 'بکاپ تکمیل شد',
+    'failed' => 'بکاپ ناموفق',
+    'interrupted' => 'عملیات متوقف شد',
+    _ => stage.isEmpty ? 'در حال انجام...' : '$stage$suffix',
+  };
+}
+
+String _restoreUnavailableReason(OdinVaultBackupHistoryItem backup) {
+  if (backup.status != 2) return 'فقط بکاپ موفق قابل Restore است.';
+  if (!backup.localFileAvailable) {
+    return 'فایل محلی این بکاپ روی Agent در دسترس نیست.';
+  }
+  return 'Restore برای این بکاپ در دسترس نیست.';
+}
+
+String _verificationText(int status) {
+  return switch (status) {
+    2 => 'موفق',
+    3 => 'ناموفق',
+    1 => 'در حال بررسی',
+    _ => 'انجام نشده',
+  };
+}
+
+String _bytes(int? value) {
+  if (value == null) return '-';
+  if (value < 1024) return '$value B';
+  if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
+  if (value < 1024 * 1024 * 1024) {
+    return '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+  return '${(value / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+}
+
+String _formatDateOnly(DateTime? value) {
+  if (value == null) return '-';
+  final local = value.toLocal();
+  final jalali = _toJalali(local.year, local.month, local.day);
+  String two(int x) => x.toString().padLeft(2, '0');
+  return _toPersianDigits(
+    '${jalali.$1}/${two(jalali.$2)}/${two(jalali.$3)}',
+  );
+}
+
+String _formatDate(DateTime? value) {
+  if (value == null) return '-';
+  final local = value.toLocal();
+  final jalali = _toJalali(local.year, local.month, local.day);
+  String two(int x) => x.toString().padLeft(2, '0');
+  return _toPersianDigits(
+    '${jalali.$1}/${two(jalali.$2)}/${two(jalali.$3)}  '
+    '${two(local.hour)}:${two(local.minute)}',
+  );
+}
+
+(int, int, int) _toJalali(int year, int month, int day) {
+  var gy = year - 1600;
+  final gm = month - 1;
+  final gd = day - 1;
+
+  var gDayNo = 365 * gy +
+      ((gy + 3) ~/ 4) -
+      ((gy + 99) ~/ 100) +
+      ((gy + 399) ~/ 400);
+
+  const gDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  for (var i = 0; i < gm; i++) {
+    gDayNo += gDays[i];
+  }
+
+  final leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  if (gm > 1 && leap) gDayNo++;
+  gDayNo += gd;
+
+  var jDayNo = gDayNo - 79;
+  final jNp = jDayNo ~/ 12053;
+  jDayNo %= 12053;
+
+  var jy = 979 + 33 * jNp + 4 * (jDayNo ~/ 1461);
+  jDayNo %= 1461;
+
+  if (jDayNo >= 366) {
+    jy += (jDayNo - 1) ~/ 365;
+    jDayNo = (jDayNo - 1) % 365;
+  }
+
+  const jDays = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+  var jm = 0;
+  while (jm < 11 && jDayNo >= jDays[jm]) {
+    jDayNo -= jDays[jm];
+    jm++;
+  }
+
+  return (jy, jm + 1, jDayNo + 1);
+}
+
+String _toPersianDigits(String value) {
+  const latin = '0123456789';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  var result = value;
+  for (var i = 0; i < latin.length; i++) {
+    result = result.replaceAll(latin[i], persian[i]);
+  }
+  return result;
+}
+), '')
+          ? await widget.api.testStorageTargetConnection(widget.target.id)
+          : await widget.api.testReplicaConnection(
+              baseUrl: currentUrl,
+              apiKey: newKey,
+            );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(result.success ? 'تست اتصال موفق' : 'تست اتصال ناموفق'),
+          content: Text(
+            result.message.isEmpty
+                ? (result.success ? 'اتصال Agent مقصد سالم است.' : 'اتصال برقرار نشد.')
+                : result.message,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('بستن'),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (mounted) setState(() => error = OdinVaultApiException.from(e).message);
     } finally {
