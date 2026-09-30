@@ -401,14 +401,22 @@ class OdinVaultApiClient {
     required bool isEnabled,
     String? baseUrl,
     String? apiKey,
-  }) async =>
-      _dio.put<Object>('/api/storage-targets/$id', data: {
-        'name': name,
-        'folderId': folderId,
-        'isEnabled': isEnabled,
-        if (baseUrl != null) 'baseUrl': baseUrl,
-        if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
-      });
+  }) async {
+    final data = <String, dynamic>{
+      'name': name,
+      'folderId': folderId,
+      'isEnabled': isEnabled,
+    };
+
+    if (baseUrl != null) {
+      data['baseUrl'] = baseUrl;
+    }
+    if (apiKey != null && apiKey.isNotEmpty) {
+      data['apiKey'] = apiKey;
+    }
+
+    await _dio.put<Object>('/api/storage-targets/$id', data: data);
+  }
 
   Future<void> deleteStorageTarget(String id) async =>
       _dio.delete<Object>('/api/storage-targets/$id');
