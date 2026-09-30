@@ -3141,7 +3141,6 @@ class _StorageTargetDialogState extends State<StorageTargetDialog> {
       if (mounted) setState(() => busy = false);
     }
   }
-
   Future<void> testReplica() async {
     if (busy || testing) return;
     setState(() {
@@ -3153,7 +3152,38 @@ class _StorageTargetDialogState extends State<StorageTargetDialog> {
       final newKey = replicaKey.text.trim();
 
       final result = newKey.isEmpty &&
-              currentUrl.replaceAll(RegExp(r'/
+              currentUrl.replaceAll(RegExp(r'/$'), '') ==
+                  (widget.target.baseUrl ?? '').replaceAll(RegExp(r'/$'), '')
+          ? await widget.api.testStorageTargetConnection(widget.target.id)
+          : await widget.api.testReplicaConnection(
+              baseUrl: currentUrl,
+              apiKey: newKey,
+            );
+
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(result.success ? 'تست اتصال موفق' : 'تست اتصال ناموفق'),
+          content: Text(
+            result.message.isEmpty
+                ? (result.success ? 'اتصال Agent مقصد سالم است.' : 'اتصال برقرار نشد.')
+                : result.message,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('بستن'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => error = OdinVaultApiException.from(e).message);
+      }
+    } finally {
       if (mounted) setState(() => testing = false);
     }
   }
