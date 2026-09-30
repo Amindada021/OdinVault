@@ -65,11 +65,32 @@ public sealed class AgentHealthService(
                                  x.CompletedAtUtc != null &&
                                  x.CompletedAtUtc >= failedCutoff, cancellationToken);
 
-            var failedReplicasDue = await db.BackupReplicas
+            var readAlertKeys = await db.AlertReadStates
                 .AsNoTracking()
-                .CountAsync(x => x.Status == ReplicaStatus.Failed &&
-                                 x.NextRetryAtUtc != null &&
-                                 x.NextRetryAtUtc <= now, cancellationToken);
+                .Select(x => x.AlertKey)
+                .ToHashSetAsync(cancellationToken);
+
+            var recentFailedBackupIds = await db.BackupRecords
+                .AsNoTracking()
+                .Where(x => x.Status == BackupStatus.Failed &&
+                            x.CompletedAtUtc != null &&
+                            x.CompletedAtUtc >= failedCutoff)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+
+            var unacknowledgedBackupFailures = recentFailedBackupIds.Count(id =>
+                !readAlertKeys.Contains($"backup-failed:{id:N}"));
+
+            var dueFailedReplicaIds = await db.BackupReplicas
+                .AsNoTracking()
+                .Where(x => x.Status == ReplicaStatus.Failed &&
+                            x.NextRetryAtUtc != null &&
+                            x.NextRetryAtUtc <= now)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+
+            var failedReplicasDue = dueFailedReplicaIds.Count(id =>
+                !readAlertKeys.Contains($"replica-failed:{id:N}"));
 
             var enabledDatabaseIds = await db.DatabaseEndpoints
                 .AsNoTracking()
@@ -115,7 +136,7 @@ public sealed class AgentHealthService(
 
             var degraded =
                 staleRunningJobs > 0 ||
-                failedJobsLast24Hours > 0 ||
+                unacknowledgedBackupFailures > 0 ||
                 failedReplicasDue > 0 ||
                 databasesWithoutSuccessfulBackup > 0 ||
                 queuedJobs >= 60 ||
