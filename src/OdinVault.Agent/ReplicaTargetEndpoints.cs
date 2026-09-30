@@ -8,6 +8,50 @@ public static class ReplicaTargetEndpoints
 {
     public static void MapReplicaTargetEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/storage-targets/odinvault-replica/test-connection", async (
+            TestReplicaConnectionRequest request,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BaseUrl) || string.IsNullOrWhiteSpace(request.ApiKey))
+                return Results.BadRequest(new { success = false, message = "آدرس و کلید API سرور مقصد الزامی است." });
+
+            if (!Uri.TryCreate(request.BaseUrl.Trim(), UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                return Results.BadRequest(new { success = false, message = "آدرس سرور مقصد معتبر نیست." });
+            }
+
+            var baseUrl = request.BaseUrl.Trim().TrimEnd('/');
+            var apiKey = request.ApiKey.Trim();
+
+            try
+            {
+                var client = httpClientFactory.CreateClient("OdinVaultReplica");
+                using var probe = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/databases");
+                probe.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                using var response = await client.SendAsync(probe, timeout.Token);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    return Results.Ok(new { success = false, statusCode = 401, message = "Agent مقصد در دسترس است اما کلید API اشتباه است." });
+
+                if (!response.IsSuccessStatusCode)
+                    return Results.Ok(new { success = false, statusCode = (int)response.StatusCode, message = $"Agent مقصد پاسخ HTTP {(int)response.StatusCode} داد." });
+
+                return Results.Ok(new { success = true, statusCode = (int)response.StatusCode, message = "ارتباط با Agent مقصد و کلید API با موفقیت تأیید شد." });
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return Results.Ok(new { success = false, statusCode = (int?)null, message = "Timeout: در ۱۰ ثانیه پاسخی از Agent مقصد دریافت نشد. پورت 5188 و Firewall را بررسی کنید." });
+            }
+            catch (HttpRequestException ex)
+            {
+                return Results.Ok(new { success = false, statusCode = (int?)null, message = $"اتصال شبکه به Agent مقصد برقرار نشد: {ex.Message}" });
+            }
+        });
+
         app.MapPost("/api/storage-targets/odinvault-replica", async (
             CreateReplicaTargetRequest request,
             OdinVaultDbContext db,
@@ -87,6 +131,8 @@ public static class ReplicaTargetEndpoints
         });
     }
 }
+
+public sealed record TestReplicaConnectionRequest(string BaseUrl, string ApiKey);
 
 public sealed record CreateReplicaTargetRequest(
     string Name,
