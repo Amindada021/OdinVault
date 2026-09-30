@@ -62,6 +62,20 @@ internal sealed class ReplicaSetupForm : Form
             ForeColor = Color.DimGray
         });
 
+        var testConnection = new Button { Text = "تست اتصال", AutoSize = true };
+        testConnection.Click += async (_, _) => await Run(async () =>
+        {
+            var result = await api.SendAsync<ReplicaConnectionTestResponse>(
+                HttpMethod.Post,
+                "api/storage-targets/odinvault-replica/test-connection",
+                new { baseUrl = url.Text, apiKey = key.Text });
+
+            status.Text = result.Success
+                ? $"✓ {result.Message}"
+                : $"✕ {result.Message}";
+        });
+        form.Controls.Add(testConnection);
+
         var add = new Button { Text = "افزودن و تست مقصد", AutoSize = true };
         add.Click += async (_, _) => await Run(async () =>
         {
@@ -85,6 +99,84 @@ internal sealed class ReplicaSetupForm : Form
             status.Text = "مقصد تست و ثبت شد. حالا دیتابیس‌های موردنظر را به همین مقصد وصل کنید.";
         });
         form.Controls.Add(add);
+
+        var edit = new Button { Text = "ویرایش مقصد انتخاب‌شده", AutoSize = true };
+        edit.Click += async (_, _) => await Run(async () =>
+        {
+            if (targets.SelectedItem is not ReplicaTargetResponse target)
+                throw new InvalidOperationException("ابتدا یک مقصد را از لیست انتخاب کنید.");
+
+            await api.SendAsync<JsonElement>(
+                HttpMethod.Put,
+                $"api/storage-targets/{target.Id}",
+                new
+                {
+                    name = name.Text,
+                    folderId = (string?)null,
+                    isEnabled = true,
+                    baseUrl = url.Text,
+                    apiKey = string.IsNullOrWhiteSpace(key.Text) ? null : key.Text
+                });
+
+            key.Clear();
+
+            var test = await api.SendAsync<StorageConnectionTestResponse>(
+                HttpMethod.Post,
+                $"api/storage-targets/{target.Id}/connection-test");
+
+            status.Text = test.Success
+                ? $"ویرایش ذخیره شد. ✓ {test.Message}"
+                : $"ویرایش ذخیره شد اما تست اتصال ناموفق است: {test.Message}";
+
+            await LoadTargets();
+            targets.SelectedItem = targets.Items.Cast<ReplicaTargetResponse>()
+                .FirstOrDefault(x => x.Id == target.Id);
+        });
+        form.Controls.Add(edit);
+
+        var delete = new Button { Text = "حذف مقصد انتخاب‌شده", AutoSize = true };
+        delete.Click += async (_, _) => await Run(async () =>
+        {
+            if (targets.SelectedItem is not ReplicaTargetResponse target)
+                throw new InvalidOperationException("ابتدا یک مقصد را از لیست انتخاب کنید.");
+
+            if (OdinDialog.Show(
+                    this,
+                    $"مقصد «{target.Name}» از لیست حذف شود؟",
+                    "OdinVault",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+
+            try
+            {
+                await api.SendAsync<JsonElement>(
+                    HttpMethod.Delete,
+                    $"api/storage-targets/{target.Id}");
+                status.Text = "مقصد حذف شد.";
+            }
+            catch (Exception ex) when (ex.Message.Contains("history", StringComparison.OrdinalIgnoreCase) ||
+                                       ex.Message.Contains("تاریخچه", StringComparison.OrdinalIgnoreCase))
+            {
+                await api.SendAsync<JsonElement>(
+                    HttpMethod.Put,
+                    $"api/storage-targets/{target.Id}",
+                    new
+                    {
+                        name = target.Name,
+                        folderId = (string?)null,
+                        isEnabled = false,
+                        baseUrl = target.BaseUrl,
+                        apiKey = (string?)null
+                    });
+                status.Text = "این مقصد تاریخچه Replica داشت؛ برای حفظ تاریخچه غیرفعال و از لیست فعال حذف شد.";
+            }
+
+            await LoadTargets();
+            url.Clear();
+            key.Clear();
+        });
+        form.Controls.Add(delete);
 
         Label("دیتابیس‌هایی که بکاپشان به این مقصد ارسال شود");
         form.Controls.Add(databases);
@@ -131,9 +223,10 @@ internal sealed class ReplicaSetupForm : Form
         {
             if (targets.SelectedItem is ReplicaTargetResponse selected)
             {
+                name.Text = selected.Name;
                 url.Text = selected.BaseUrl ?? "";
                 key.Clear();
-                status.Text = "مقصد انتخاب شد؛ آدرس نمایش داده می‌شود و کلید API به‌صورت امن ذخیره شده است.";
+                status.Text = "مقصد انتخاب شد؛ نام و آدرس قابل ویرایش‌اند. برای نگه‌داشتن کلید فعلی، فیلد کلید را خالی بگذارید.";
             }
 
             await LoadLinks();
