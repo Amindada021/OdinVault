@@ -1302,10 +1302,18 @@ internal sealed class MainForm : Form
         var toggle = new Button { Text = "فعال / غیرفعال", AutoSize = true, Height = 36 };
         toggle.Click += async (_, _) => await ToggleSelectedStorageAsync();
 
-        var replicaSetup = new Button { Text = "مدیریت Replica", AutoSize = true, Height = 36 };
+        var replicaSetup = new Button { Text = "مقصدهای Replica", AutoSize = true, Height = 36 };
         replicaSetup.Click += (_, _) =>
         {
             using var dialog = new ReplicaSetupForm(_api);
+            dialog.ShowDialog(this);
+            _ = RefreshStoragePageAsync();
+        };
+
+        var replicaReceiver = new Button { Text = "محل دریافت روی این سرور", AutoSize = true, Height = 36 };
+        replicaReceiver.Click += (_, _) =>
+        {
+            using var dialog = new ReplicaReceiverForm(_api);
             dialog.ShowDialog(this);
             _ = RefreshStoragePageAsync();
         };
@@ -1315,6 +1323,7 @@ internal sealed class MainForm : Form
         toolbar.Controls.Add(edit);
         toolbar.Controls.Add(toggle);
         toolbar.Controls.Add(replicaSetup);
+        toolbar.Controls.Add(replicaReceiver);
         root.Controls.Add(toolbar, 0, 1);
 
         ConfigureReadOnlyGrid(_storageGrid);
