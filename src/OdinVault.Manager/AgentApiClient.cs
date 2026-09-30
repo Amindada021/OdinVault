@@ -889,5 +889,5 @@ internal sealed record ErrorResponse(string? Message);
 
 internal sealed record BackupJobResponse(Guid Id, string Stage, int? Percent, JsonElement? Backup, string? Error);
 internal sealed record ReplicaSettingsResponse(string Directory);
-internal sealed record ReplicaTargetResponse(Guid Id, string Name, int Type, bool IsEnabled);
+internal sealed record ReplicaTargetResponse(Guid Id, string Name, int Type, bool IsEnabled, string? BaseUrl);
 internal sealed record ReceivedBackupResponse(string FileName, string RelativePath, long SizeBytes, DateTime ReceivedAtUtc);
