@@ -1637,7 +1637,7 @@ internal sealed class MainForm : Form
 
         var markSelected = new Button
         {
-            Text = "خوانده شد",
+            Text = "تأیید / پاک کردن هشدار",
             AutoSize = true,
             Height = 36
         };
@@ -1645,7 +1645,7 @@ internal sealed class MainForm : Form
 
         var markAll = new Button
         {
-            Text = "خواندن همه",
+            Text = "تأیید همه خطاهای قبلی",
             AutoSize = true,
             Height = 36
         };
@@ -1780,6 +1780,7 @@ internal sealed class MainForm : Form
             await _api.MarkAlertsReadAsync([alert.Key]);
 
         await RefreshAlertsPageAsync();
+        await RefreshAllAsync(showErrors: false);
     }
 
     private async Task MarkAllAlertsReadAsync()
@@ -1798,6 +1799,7 @@ internal sealed class MainForm : Form
 
         await _api.MarkAlertsReadAsync(unreadKeys);
         await RefreshAlertsPageAsync();
+        await RefreshAllAsync(showErrors: false);
     }
 
     private async Task OpenAlertAsync(DataGridViewRow row)
