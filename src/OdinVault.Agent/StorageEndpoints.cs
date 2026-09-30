@@ -325,15 +325,17 @@ public static class StorageEndpoints
                         var client = httpClientFactory.CreateClient("OdinVaultReplica");
                         using var request = new HttpRequestMessage(
                             HttpMethod.Get,
-                            $"{target.BaseUrl.TrimEnd('/')}/api/health");
+                            $"{target.BaseUrl.TrimEnd('/')}/api/databases");
                         request.Headers.TryAddWithoutValidation("X-OdinVault-Key", apiKey);
                         using var response = await client.SendAsync(request, ct);
                         return Results.Ok(new
                         {
                             success = response.IsSuccessStatusCode,
-                            message = response.IsSuccessStatusCode
-                                ? "OdinVault Replica connection succeeded."
-                                : $"Replica returned HTTP {(int)response.StatusCode}."
+                            message = response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                                ? "کلید API سرور پشتیبان صحیح نیست."
+                                : response.IsSuccessStatusCode
+                                    ? "اتصال به OdinVault Replica با موفقیت برقرار شد."
+                                    : $"Replica returned HTTP {(int)response.StatusCode}."
                         });
                     }
 
@@ -432,7 +434,8 @@ public static class StorageEndpoints
             var link = await db.DatabaseStorageTargets
                 .FirstOrDefaultAsync(x => x.DatabaseEndpointId == databaseId && x.StorageTargetId == targetId, ct);
             if (link is null)
-                return Results.NotFound();
+                return Results.NoContent();
+
             db.DatabaseStorageTargets.Remove(link);
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
