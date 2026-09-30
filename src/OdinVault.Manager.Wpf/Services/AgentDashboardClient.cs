@@ -61,7 +61,7 @@ internal sealed record UpdateBackupPolicyRequest(string BackupDirectory,int MaxL
 internal sealed record DatabaseResponse(Guid Id,string Name,string Host,int? Port,string DatabaseName,string Username,bool HasPassword,bool TrustServerCertificate,bool IsEnabled,DateTime CreatedAtUtc,BackupPolicyResponse? Policy);
 internal sealed record BackupPolicyResponse(string BackupDirectory,string? ScheduleCron,int MaxLocalBackups,bool VerifyAfterBackup,bool IsEnabled,DateTime? LastScheduledRunUtc);
 internal sealed record ReplicaSettingsResponse(string Directory);
-internal sealed record ReplicaTargetResponse(Guid Id,string Name,int Type,bool IsEnabled);
+internal sealed record ReplicaTargetResponse(Guid Id,string Name,int Type,bool IsEnabled,string? BaseUrl);
 internal sealed record ReceivedBackupResponse(string FileName,string RelativePath,long SizeBytes,DateTime ReceivedAtUtc);
 internal sealed record UpdateStorageTargetClientRequest(string Name,string? FolderId,bool IsEnabled,string? BaseUrl,string? ApiKey);
 internal sealed record AgentEndpointProbeResult(bool Success,string Message);
