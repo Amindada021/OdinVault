@@ -345,6 +345,20 @@ class OdinVaultApiClient {
           'testConnection': true,
         },
       );
+
+  Future<OdinVaultStorageConnectionTest> testReplicaConnection({
+    required String baseUrl,
+    required String apiKey,
+  }) async {
+    final data = _json(
+      (await _dio.post<Object>(
+        '/api/storage-targets/odinvault-replica/test-connection',
+        data: {'baseUrl': baseUrl, 'apiKey': apiKey},
+      ))
+          .data,
+    );
+    return OdinVaultStorageConnectionTest.fromJson(data);
+  }
   Future<void> testReplicaTarget(String id) async {
     final result = await testStorageTargetConnection(id);
     if (!result.success) {
@@ -385,11 +399,15 @@ class OdinVaultApiClient {
     required String name,
     String? folderId,
     required bool isEnabled,
+    String? baseUrl,
+    String? apiKey,
   }) async =>
       _dio.put<Object>('/api/storage-targets/$id', data: {
         'name': name,
         'folderId': folderId,
         'isEnabled': isEnabled,
+        if (baseUrl != null) 'baseUrl': baseUrl,
+        if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
       });
 
   Future<void> deleteStorageTarget(String id) async =>
