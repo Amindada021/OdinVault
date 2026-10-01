@@ -16,6 +16,9 @@ const _lastHealthPrefix = 'odinvault_monitor_health_';
 const _notifiedAlertsPrefix = 'odinvault_notified_alerts_';
 const _notificationHistoryKey = 'odinvault_notification_history';
 const _pendingNavigationKey = 'odinvault_pending_notification_navigation';
+const _monitorCursorPrefix = 'odinvault_monitor_cursor_';
+const _monitorLastSuccessPrefix = 'odinvault_monitor_last_success_';
+const _monitorLastErrorPrefix = 'odinvault_monitor_last_error_';
 
 final FlutterLocalNotificationsPlugin _notifications =
     FlutterLocalNotificationsPlugin();
@@ -25,16 +28,19 @@ class OdinVaultNotificationTarget {
     required this.serverId,
     required this.kind,
     this.alertKey,
+    this.databaseId,
   });
 
   final String serverId;
   final String kind;
   final String? alertKey;
+  final String? databaseId;
 
   Map<String, dynamic> toJson() => {
         'serverId': serverId,
         'kind': kind,
         if (alertKey != null) 'alertKey': alertKey,
+        if (databaseId != null) 'databaseId': databaseId,
       };
 
   factory OdinVaultNotificationTarget.fromJson(Map<String, dynamic> json) =>
@@ -42,6 +48,7 @@ class OdinVaultNotificationTarget {
         serverId: json['serverId']?.toString() ?? '',
         kind: json['kind']?.toString() ?? '',
         alertKey: json['alertKey']?.toString(),
+        databaseId: json['databaseId']?.toString(),
       );
 }
 
@@ -149,8 +156,9 @@ void odinVaultBackgroundDispatcher() {
         try {
           await MonitoringService.notifyBackupResults(api, server.id, server.name);
           backupResultsAvailable = true;
-        } catch (_) {
-          // Keep the existing alerts as a fallback for older/unreachable agents.
+        } catch (e) {
+          await prefs.setString('$_monitorLastErrorPrefix${server.id}', 'دریافت نتیجه بکاپ: $e');
+          // Keep alerts as a fallback for older agents.
         }
 
         try {
@@ -291,6 +299,19 @@ class MonitoringService {
     return await android?.requestNotificationsPermission() ?? true;
   }
 
+  static Future<bool> notificationPermissionGranted() async {
+    final android = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    return await android?.areNotificationsEnabled() ?? true;
+  }
+
+  static Future<Map<String, String?>> monitorStatus(String serverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'lastSuccess': prefs.getString('$_monitorLastSuccessPrefix$serverId'),
+      'lastError': prefs.getString('$_monitorLastErrorPrefix$serverId'),
+    };
+  }
+
   static Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_monitorEnabledKey) ?? true;
@@ -319,49 +340,61 @@ class MonitoringService {
     OdinVaultApiClient api, String serverId, String serverName,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    await _ensureBackupMonitorSince(prefs);
-    final since = DateTime.parse(prefs.getString(_backupMonitorSinceKey)!);
-    final overview = await api.backupOverview(take: 500);
+    final cursorKey = '$_monitorCursorPrefix$serverId';
+    final initial = prefs.getString(cursorKey);
+    final since = initial == null ? DateTime.now().toUtc() : DateTime.parse(initial).toUtc();
+    DateTime? beforeUtc;
+    DateTime? newestServerUtc;
     final key = '$_notifiedBackupsPrefix$serverId';
     final known = prefs.getStringList(key)?.toSet() ?? <String>{};
 
-    Future<void> notify(String eventId, String database, DateTime? completed,
-        bool succeeded, String? error) async {
-      if (completed == null || completed.isBefore(since) || known.contains(eventId)) return;
+    Future<void> notify(String eventId, String databaseId, String database, DateTime? completed,
+        String kind, String body) async {
+      if (completed == null || !completed.isAfter(since) || known.contains(eventId)) return;
       await showNotification(
-        id: _notificationId('$serverId:$eventId'),
-        serverId: serverId,
-        serverName: serverName,
-        kind: 'backup',
-        title: '$serverName • $database',
-        body: succeeded
-            ? 'بکاپ با موفقیت انجام شد.'
-            : 'بکاپ ناموفق بود: ${error?.trim().isNotEmpty == true ? error : 'خطای نامشخص؛ گزارش سرور را بررسی کنید.'}',
+        id: _notificationId('$serverId:$eventId'), serverId: serverId, serverName: serverName,
+        kind: kind, databaseId: databaseId, title: '$serverName • $database', body: body,
       );
       known.add(eventId);
-      // Save after each notification so a later failure does not repeat the batch.
       await prefs.setStringList(key, known.toList().reversed.take(2000).toList().reversed.toList());
     }
 
-    final activeBackupIds = overview.jobs
-        .where((job) => job.status == 0 || job.status == 1)
-        .map((job) => job.backupRecordId).toSet();
-    final backupIds = overview.backups.map((backup) => backup.id).toSet();
-    for (final backup in overview.backups.reversed) {
-      if (backup.status != 2 && backup.status != 3) continue;
-      if (activeBackupIds.contains(backup.id) || backup.verificationStatus == 1) continue;
-      final succeeded = backup.status == 2 && backup.verificationStatus != 3;
-      await notify('backup:${backup.id}:${succeeded ? 'ok' : 'failed'}',
-          backup.databaseName, backup.completedAtUtc ?? backup.startedAtUtc,
-          succeeded, backup.error ?? (backup.verificationStatus == 3 ? 'بررسی سلامت بکاپ ناموفق بود.' : null));
+    while (true) {
+      final overview = await api.backupOverview(take: 200, beforeUtc: beforeUtc);
+      newestServerUtc ??= overview.utc;
+      final activeBackupIds = overview.jobs.where((job) => job.status == 0 || job.status == 1).map((job) => job.backupRecordId).toSet();
+      final backupIds = overview.backups.map((backup) => backup.id).toSet();
+
+      for (final backup in overview.backups.reversed) {
+        final at = backup.completedAtUtc ?? backup.startedAtUtc;
+        if (at == null || !at.isAfter(since) || activeBackupIds.contains(backup.id) || backup.verificationStatus == 1) continue;
+        if (backup.status == 2 && backup.verificationStatus == 3) {
+          await notify('verify:${backup.id}:failed', backup.databaseEndpointId, backup.databaseName, at, 'verify',
+              'بررسی سلامت بکاپ ناموفق بود: ${backup.error?.trim().isNotEmpty == true ? backup.error : 'جزئیات را در Agent بررسی کنید.'}');
+        } else if (backup.status == 2) {
+          await notify('backup:${backup.id}:ok', backup.databaseEndpointId, backup.databaseName, at, 'backup',
+              'بکاپ با موفقیت انجام شد.');
+        } else if (backup.status == 3) {
+          await notify('backup:${backup.id}:failed', backup.databaseEndpointId, backup.databaseName, at, 'backup',
+              'ساخت بکاپ ناموفق بود: ${backup.error?.trim().isNotEmpty == true ? backup.error : 'خطای نامشخص؛ گزارش سرور را بررسی کنید.'}');
+        }
+      }
+      for (final job in overview.jobs.reversed) {
+        final at = job.completedAtUtc ?? job.updatedAtUtc;
+        if ((job.status != 3 && job.status != 4) || backupIds.contains(job.backupRecordId)) continue;
+        await notify('job:${job.id}', job.databaseEndpointId, job.databaseName, at, 'backup',
+            'اجرای بکاپ ناموفق بود: ${job.errorMessage ?? job.errorCode ?? 'اجرای بکاپ قطع شد.'}');
+      }
+
+      final next = overview.nextBeforeUtc;
+      if (next == null || !next.isAfter(since) || overview.jobs.isEmpty && overview.backups.isEmpty) break;
+      beforeUtc = next;
     }
-    // A job can fail before a BackupRecord is created (connection/configuration errors).
-    for (final job in overview.jobs.reversed) {
-      if (job.status != 3 && job.status != 4) continue;
-      if (backupIds.contains(job.backupRecordId)) continue;
-      await notify('job:${job.id}', job.databaseName,
-          job.completedAtUtc ?? job.updatedAtUtc, false,
-          job.errorMessage ?? job.errorCode ?? 'اجرای بکاپ قطع شد.');
+
+    if (newestServerUtc != null) {
+      await prefs.setString(cursorKey, newestServerUtc!.toUtc().toIso8601String());
+      await prefs.setString('$_monitorLastSuccessPrefix$serverId', DateTime.now().toUtc().toIso8601String());
+      await prefs.remove('$_monitorLastErrorPrefix$serverId');
     }
   }
 
@@ -384,6 +417,7 @@ class MonitoringService {
     required String title,
     required String body,
     String? alertKey,
+    String? databaseId,
   }) async {
     final android = AndroidNotificationDetails(
       'odinvault_monitoring',
@@ -398,6 +432,7 @@ class MonitoringService {
       serverId: serverId,
       kind: kind,
       alertKey: alertKey,
+      databaseId: databaseId,
     );
     final payload = jsonEncode(target.toJson());
 

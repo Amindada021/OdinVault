@@ -247,12 +247,12 @@ class OdinVaultApiClient {
     }
   }
 
-  Future<OdinVaultBackupOverview> backupOverview({int take = 200}) async =>
+  Future<OdinVaultBackupOverview> backupOverview({int take = 200, DateTime? beforeUtc}) async =>
       OdinVaultBackupOverview.fromJson(
         _json(
           (await _dio.get<Object>(
             '/api/backups/overview',
-            queryParameters: {'take': take.clamp(20, 500)},
+            queryParameters: {'take': take.clamp(20, 500), if (beforeUtc != null) 'beforeUtc': beforeUtc.toUtc().toIso8601String()},
           ))
               .data,
         ),

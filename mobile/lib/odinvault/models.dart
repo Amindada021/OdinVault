@@ -247,6 +247,7 @@ class OdinVaultDashboard {
 
   factory OdinVaultDashboard.fromJson(Map<String, dynamic> json) => OdinVaultDashboard(
         utc: parseAgentUtc(json['utc']),
+        nextBeforeUtc: parseAgentUtc(json['nextBeforeUtc']),
         status: json['status']?.toString() ?? '',
         protectionStatus: json['protectionStatus']?.toString() ?? '',
         enabledDatabases: (json['enabledDatabases'] as num?)?.toInt() ?? 0,
@@ -394,11 +395,13 @@ class OdinVaultBackupOverview {
     required this.utc,
     required this.jobs,
     required this.backups,
+    this.nextBeforeUtc,
   });
 
   final DateTime? utc;
   final List<OdinVaultBackupJob> jobs;
   final List<OdinVaultBackupHistoryItem> backups;
+  final DateTime? nextBeforeUtc;
 
   factory OdinVaultBackupOverview.fromJson(Map<String, dynamic> json) =>
       OdinVaultBackupOverview(

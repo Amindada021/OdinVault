@@ -113,7 +113,7 @@ class _ServersPageState extends State<ServersPage> {
 
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => AgentPage(server: server!)),
+      MaterialPageRoute(builder: (_) => target.databaseId?.isNotEmpty == true\n          ? DatabasePage(server: server!, databaseId: target.databaseId!)\n          : AgentPage(server: server!)),
     );
     await MonitoringService.refreshHistoryBadge();
     await _checkAll();
@@ -130,6 +130,12 @@ class _ServersPageState extends State<ServersPage> {
 
   Future<void> _showMonitoringSettings() async {
     var enabled = _monitoringEnabled ?? await MonitoringService.isEnabled();
+    final permission = await MonitoringService.notificationPermissionGranted();
+    final monitorStates = <String>[];
+    for (final server in _servers) {
+      final status = await MonitoringService.monitorStatus(server.id);
+      monitorStates.add('${server.name}: آخرین بررسی موفق ${status['lastSuccess'] ?? 'هنوز ثبت نشده'}${status['lastError'] == null ? '' : ' • خطا: ${status['lastError']}'}');
+    }
     if (!mounted) return;
 
     await showDialog<void>(
@@ -167,6 +173,12 @@ class _ServersPageState extends State<ServersPage> {
                   'در صورت قطع Agent یا خطای جدید بکاپ، Verify و Replica اعلان می‌دهد.',
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(permission ? 'مجوز اعلان: فعال' : 'مجوز اعلان: غیرفعال؛ پایش ممکن است اجرا شود اما اعلان نمایش داده نمی‌شود.'),
+              if (monitorStates.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...monitorStates.map((x) => Text(x, style: Theme.of(context).textTheme.bodySmall)),
+              ],
               const SizedBox(height: 8),
               Text(
                 'اندروید زمان اجرای دقیق را مدیریت می‌کند؛ بررسی‌ها با WorkManager و حداقل فاصله ۱۵ دقیقه انجام می‌شوند.',

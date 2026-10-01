@@ -10,6 +10,7 @@ public static class BackupOverviewEndpoints
     {
         app.MapGet("/api/backups/overview", async (
             int? take,
+            DateTime? beforeUtc,
             OdinVaultDbContext db,
             CancellationToken ct) =>
         {
@@ -23,17 +24,16 @@ public static class BackupOverviewEndpoints
 
             var databaseNames = databases.ToDictionary(x => x.Id, x => x.Name);
 
-            var jobs = await db.BackupJobs
-                .AsNoTracking()
-                .OrderByDescending(x => x.CreatedAtUtc)
-                .Take(limit)
-                .ToListAsync(ct);
+            var jobsQuery = db.BackupJobs.AsNoTracking();
+            var backupsQuery = db.BackupRecords.AsNoTracking();
+            if (beforeUtc is DateTime cursor)
+            {
+                jobsQuery = jobsQuery.Where(x => x.CreatedAtUtc < cursor);
+                backupsQuery = backupsQuery.Where(x => x.StartedAtUtc < cursor);
+            }
 
-            var backups = await db.BackupRecords
-                .AsNoTracking()
-                .OrderByDescending(x => x.StartedAtUtc)
-                .Take(limit)
-                .ToListAsync(ct);
+            var jobs = await jobsQuery.OrderByDescending(x => x.CreatedAtUtc).Take(limit).ToListAsync(ct);
+            var backups = await backupsQuery.OrderByDescending(x => x.StartedAtUtc).Take(limit).ToListAsync(ct);
 
             var jobItems = jobs.Select(x => new
             {
@@ -69,6 +69,7 @@ public static class BackupOverviewEndpoints
             return Results.Ok(new
             {
                 utc = DateTime.UtcNow,
+                nextBeforeUtc = jobs.Concat<object>(backups).Any() ? new[] { jobs.LastOrDefault()?.CreatedAtUtc, backups.LastOrDefault()?.StartedAtUtc }.Where(x => x.HasValue).Min() : null,
                 jobs = jobItems,
                 backups = backupItems
             });
