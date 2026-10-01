@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'backup_download.dart';
+import 'phone_backups_page.dart';
 
 import 'package:odinvault_mobile/odinvault/api_client.dart';
 import 'package:odinvault_mobile/odinvault/models.dart';
@@ -114,7 +115,8 @@ class _ServersPageState extends State<ServersPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => target.databaseId?.isNotEmpty == true
-          ? DatabasePage(server: server!, databaseId: target.databaseId!)\n          : AgentPage(server: server!)),
+          ? DatabasePage(server: server, databaseId: target.databaseId!)
+          : AgentPage(server: server)),
     );
     await MonitoringService.refreshHistoryBadge();
     await _checkAll();

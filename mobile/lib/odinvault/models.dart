@@ -247,7 +247,6 @@ class OdinVaultDashboard {
 
   factory OdinVaultDashboard.fromJson(Map<String, dynamic> json) => OdinVaultDashboard(
         utc: parseAgentUtc(json['utc']),
-        nextBeforeUtc: parseAgentUtc(json['nextBeforeUtc']),
         status: json['status']?.toString() ?? '',
         protectionStatus: json['protectionStatus']?.toString() ?? '',
         enabledDatabases: (json['enabledDatabases'] as num?)?.toInt() ?? 0,
