@@ -113,7 +113,8 @@ class _ServersPageState extends State<ServersPage> {
 
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => target.databaseId?.isNotEmpty == true\n          ? DatabasePage(server: server!, databaseId: target.databaseId!)\n          : AgentPage(server: server!)),
+      MaterialPageRoute(builder: (_) => target.databaseId?.isNotEmpty == true
+          ? DatabasePage(server: server!, databaseId: target.databaseId!)\n          : AgentPage(server: server!)),
     );
     await MonitoringService.refreshHistoryBadge();
     await _checkAll();
@@ -374,6 +375,11 @@ class _ServersPageState extends State<ServersPage> {
                   ],
                 ),
               ),
+            ),
+            IconButton(
+              tooltip: 'فایل‌های بکاپ گوشی',
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneBackupsPage())),
+              icon: const Icon(Icons.folder_copy_outlined),
             ),
             IconButton(
               tooltip: 'پایش پس‌زمینه',

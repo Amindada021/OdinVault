@@ -27,7 +27,7 @@ class MainActivity : FlutterActivity() {
                     val intent = Intent(this, BackupDownloadService::class.java).setAction(BackupDownloadService.ACTION_START).apply {
                         putExtra("baseUrl", call.argument<String>("baseUrl")); putExtra("apiKey", call.argument<String>("apiKey") ?: "")
                         putExtra("backupId", call.argument<String>("backupId")); putExtra("fileName", call.argument<String>("fileName"))
-                        putExtra("databaseName", call.argument<String>("databaseName")); putExtra("expectedSize", call.argument<Number>("expectedSize")?.toLong() ?: 0L)
+                        putExtra("databaseName", call.argument<String>("databaseName")); putExtra("agentName", call.argument<String>("agentName") ?: "Agent"); putExtra("expectedSize", call.argument<Number>("expectedSize")?.toLong() ?: 0L)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
                     result.success(null)
@@ -41,6 +41,28 @@ class MainActivity : FlutterActivity() {
                 }
                 "cancelBackupDownload" -> {
                     startService(Intent(this, BackupDownloadService::class.java).setAction(BackupDownloadService.ACTION_CANCEL))
+                    result.success(null)
+                }
+                "listStoredBackups" -> {
+                    try { result.success(storedBackups()) } catch (e: Exception) { if (e is SecurityException || e is java.io.FileNotFoundException) preferences.edit().remove("backup_tree").apply(); result.error("list_failed", "دسترسی پوشه از بین رفته است؛ پوشه مقصد را دوباره انتخاب کنید.", null) }
+                }
+                "deleteStoredBackup" -> {
+                    try {
+                        val uri = Uri.parse(call.argument<String>("uri") ?: error("missing uri"))
+                        result.success(DocumentsContract.deleteDocument(contentResolver, uri))
+                    } catch (e: Exception) { result.error("delete_failed", "حذف فایل ناموفق بود.", null) }
+                }
+                "shareStoredBackup" -> {
+                    try {
+                        val uri = Uri.parse(call.argument<String>("uri") ?: error("missing uri"))
+                        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "application/octet-stream"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, "اشتراک‌گذاری بکاپ"))
+                        result.success(null)
+                    } catch (e: Exception) { result.error("share_failed", "اشتراک‌گذاری فایل ناموفق بود.", null) }
+                }
+                "clearBackupFolder" -> {
+                    preferences.edit().remove("backup_tree").apply()
                     result.success(null)
                 }
                 "temporaryFile" -> {
@@ -132,6 +154,45 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun storedBackups(): List<Map<String, Any?>> {
+        val treeText = preferences.getString("backup_tree", null) ?: return emptyList()
+        val tree = Uri.parse(treeText)
+        val selected = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val selectedName = contentResolver.query(selected, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+        val appFolder = if (selectedName == "OdinVault") selected else findDirectory(tree, selected, "OdinVault") ?: return emptyList()
+        val result = mutableListOf<Map<String, Any?>>()
+        val dbChildren = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(appFolder))
+        contentResolver.query(dbChildren, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)?.use { dbs ->
+            while (dbs.moveToNext()) {
+                if (dbs.getString(2) != DocumentsContract.Document.MIME_TYPE_DIR) continue
+                val database = dbs.getString(1)
+                val dbUri = DocumentsContract.buildDocumentUriUsingTree(tree, dbs.getString(0))
+                val filesUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(dbUri))
+                contentResolver.query(filesUri, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED, DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)?.use { files ->
+                    while (files.moveToNext()) {
+                        if (files.getString(4) == DocumentsContract.Document.MIME_TYPE_DIR) continue
+                        val storedName = files.getString(1)
+                        val split = storedName.indexOf("__")
+                        val agent = if (split > 0) storedName.substring(0, split) else "نامشخص"
+                        val displayName = if (split > 0) storedName.substring(split + 2) else storedName
+                        val uri = DocumentsContract.buildDocumentUriUsingTree(tree, files.getString(0))
+                        result.add(mapOf("uri" to uri.toString(), "name" to displayName, "storedName" to storedName, "database" to database, "agent" to agent, "size" to files.getLong(2), "modified" to files.getLong(3)))
+                    }
+                }
+            }
+        }
+        return result.sortedByDescending { (it["modified"] as? Long) ?: 0L }
+    }
+
+    private fun findDirectory(tree: Uri, parent: Uri, name: String): Uri? {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(parent))
+        contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null)?.use { cursor ->
+            while (cursor.moveToNext()) if (cursor.getString(1) == name && cursor.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR)
+                return DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0))
+        }
+        return null
     }
 
     private fun safeName(value: String): String = value

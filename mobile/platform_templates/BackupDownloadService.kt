@@ -24,7 +24,7 @@ class BackupDownloadService : Service() {
     }
     private fun download(intent:Intent){
         val base=intent.getStringExtra("baseUrl")?:return fail("آدرس Agent در دسترس نیست.");val key=intent.getStringExtra("apiKey")?:"";val id=intent.getStringExtra("backupId")?:return fail("شناسه بکاپ در دسترس نیست.")
-        val fileName=safeName(intent.getStringExtra("fileName")?:"backup.bak");val db=safeName(intent.getStringExtra("databaseName")?:"Database");val expected=intent.getLongExtra("expectedSize",0)
+        val originalName=safeName(intent.getStringExtra("fileName")?:"backup.bak");val agent=safeName(intent.getStringExtra("agentName")?:"Agent");val fileName=safeName(agent+"__"+originalName);val db=safeName(intent.getStringExtra("databaseName")?:"Database");val expected=intent.getLongExtra("expectedSize",0)
         val partial=File(filesDir,"downloads").apply{mkdirs()}.resolve("$id.part")
         prefs.edit().putString("backup_id",id).putString("file_name",fileName).putString("database_name",db).remove("saved_uri").apply()
         try{

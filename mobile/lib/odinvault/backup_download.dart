@@ -52,7 +52,7 @@ class _BackupDownloadState extends State<_BackupDownload> {
       if (!sameActive) {
         await files.invokeMethod<void>('startBackupDownload', {
           'baseUrl': widget.api.baseUrl, 'apiKey': widget.api.apiKey, 'backupId': backup!.id,
-          'fileName': backup!.fileName, 'databaseName': widget.databaseName, 'expectedSize': backup!.sizeBytes ?? 0,
+          'fileName': backup!.fileName, 'databaseName': widget.databaseName, 'agentName': widget.api.serverName, 'expectedSize': backup!.sizeBytes ?? 0,
         });
       }
       while (!closed) {
