@@ -182,7 +182,9 @@ void odinVaultBackgroundDispatcher() {
             if (!important) continue;
             if (backupResultsAvailable &&
                 (alert.key.startsWith('backup-failed:') ||
-                 alert.key.startsWith('verify-failed:'))) continue;
+                 alert.key.startsWith('verify-failed:'))) {
+              continue;
+            }
 
             await MonitoringService.showNotification(
               id: _notificationId('${server.id}:${alert.key}'),
@@ -392,7 +394,7 @@ class MonitoringService {
     }
 
     if (newestServerUtc != null) {
-      await prefs.setString(cursorKey, newestServerUtc!.toUtc().toIso8601String());
+      await prefs.setString(cursorKey, newestServerUtc.toUtc().toIso8601String());
       await prefs.setString('$_monitorLastSuccessPrefix$serverId', DateTime.now().toUtc().toIso8601String());
       await prefs.remove('$_monitorLastErrorPrefix$serverId');
     }

@@ -99,10 +99,15 @@ class _BackupDownloadState extends State<_BackupDownload> {
           return;
         }
       }
-      if (mounted) setState(() {
-        stage = job['stage']?.toString() ?? 'backup'; progress = (job['percent'] as num?)?.toDouble();
-        if (progress != null) progress = progress! / 100;
-      });
+      if (mounted) {
+        setState(() {
+          stage = job['stage']?.toString() ?? 'backup';
+          progress = (job['percent'] as num?)?.toDouble();
+          if (progress != null) {
+            progress = progress! / 100;
+          }
+        });
+      }
       await Future<void>.delayed(const Duration(seconds: 2));
     }
   }
