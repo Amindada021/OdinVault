@@ -86,8 +86,18 @@ class _BackupDownloadState extends State<_BackupDownload> {
       if (job['stage'] == 'failed' || job['stage'] == 'interrupted' || job['status'] == 3 || job['status'] == 4) {
         throw OdinVaultApiException(job['error']?.toString() ?? job['errorMessage']?.toString() ?? 'بکاپ ناموفق بود.');
       }
-      if (job['stage'] == 'complete' && job['backup'] is Map) {
-        backup = OdinVaultBackup.fromJson(Map<String, dynamic>.from(job['backup'] as Map)); return;
+      if (job['backup'] is Map) {
+        final data = Map<String, dynamic>.from(job['backup'] as Map);
+        final verification = (data['verificationStatus'] as num?)?.toInt();
+        if (verification == 3) {
+          throw const OdinVaultApiException('بکاپ ساخته شد، اما بررسی سلامت آن ناموفق بود؛ دانلود فایل تأییدنشده شروع نشد.');
+        }
+        final candidate = OdinVaultBackup.fromJson(data);
+        final readyStage = const {'replicating', 'retention', 'complete'}.contains(job['stage']?.toString());
+        if (candidate.status == 2 && readyStage) {
+          backup = candidate;
+          return;
+        }
       }
       if (mounted) setState(() {
         stage = job['stage']?.toString() ?? 'backup'; progress = (job['percent'] as num?)?.toDouble();
