@@ -37,12 +37,12 @@ String normalizeAgentBaseUrl(String value) {
 }
 
 class OdinVaultApiClient {
-  OdinVaultApiClient(OdinVaultServer server)
+  OdinVaultApiClient(OdinVaultServer server, {Duration requestTimeout = const Duration(minutes: 120)})
       : _dio = Dio(BaseOptions(
           baseUrl: normalizeAgentBaseUrl(server.baseUrl),
           connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(minutes: 120),
-          sendTimeout: const Duration(minutes: 120),
+          receiveTimeout: requestTimeout,
+          sendTimeout: requestTimeout,
           headers: {'Accept': 'application/json', if (server.apiKey.isNotEmpty) 'X-OdinVault-Key': server.apiKey},
           followRedirects: false,
         )) {

@@ -9,6 +9,8 @@ import 'package:workmanager/workmanager.dart';
 
 const _monitorTaskUniqueName = 'odinvault-background-monitor';
 const _monitorTaskName = 'odinvault-monitor-agents';
+const _backupMonitorSinceKey = 'odinvault_backup_monitor_since';
+const _notifiedBackupsPrefix = 'odinvault_notified_backups_';
 const _monitorEnabledKey = 'odinvault_monitoring_enabled';
 const _lastHealthPrefix = 'odinvault_monitor_health_';
 const _notifiedAlertsPrefix = 'odinvault_notified_alerts_';
@@ -105,7 +107,7 @@ void odinVaultBackgroundDispatcher() {
 
       final servers = await OdinVaultServerStore().load();
       for (final server in servers) {
-        final api = OdinVaultApiClient(server);
+        final api = OdinVaultApiClient(server, requestTimeout: const Duration(seconds: 15));
         final healthKey = '$_lastHealthPrefix${server.id}';
         final previousHealth = prefs.getBool(healthKey);
 
@@ -143,6 +145,14 @@ void odinVaultBackgroundDispatcher() {
         }
         await prefs.setBool(healthKey, true);
 
+        var backupResultsAvailable = false;
+        try {
+          await MonitoringService.notifyBackupResults(api, server.id, server.name);
+          backupResultsAvailable = true;
+        } catch (_) {
+          // Keep the existing alerts as a fallback for older/unreachable agents.
+        }
+
         try {
           final result = await api.alerts(includeRead: false);
           final notifiedKey = '$_notifiedAlertsPrefix${server.id}';
@@ -162,6 +172,9 @@ void odinVaultBackgroundDispatcher() {
                 alert.category.toLowerCase().contains('replica');
 
             if (!important) continue;
+            if (backupResultsAvailable &&
+                (alert.key.startsWith('backup-failed:') ||
+                 alert.key.startsWith('verify-failed:'))) continue;
 
             await MonitoringService.showNotification(
               id: _notificationId('${server.id}:${alert.key}'),
@@ -207,6 +220,7 @@ class MonitoringService {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool(_monitorEnabledKey) ?? true;
     if (enabled) {
+      await _ensureBackupMonitorSince(prefs);
       await _schedule();
     }
   }
@@ -216,7 +230,7 @@ class MonitoringService {
   static final ValueNotifier<int> unreadHistoryCount = ValueNotifier<int>(0);
 
   static Future<void> initializeNotifications() async {
-    const android = AndroidInitializationSettings('ic_launcher');
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
     await _notifications.initialize(
       settings: settings,
@@ -288,9 +302,66 @@ class MonitoringService {
 
     if (enabled) {
       await requestNotificationPermission();
+      await _ensureBackupMonitorSince(prefs);
       await _schedule();
     } else {
       await Workmanager().cancelByUniqueName(_monitorTaskUniqueName);
+    }
+  }
+
+  static Future<void> _ensureBackupMonitorSince(SharedPreferences prefs) async {
+    if (!prefs.containsKey(_backupMonitorSinceKey)) {
+      await prefs.setString(_backupMonitorSinceKey, DateTime.now().toUtc().toIso8601String());
+    }
+  }
+
+  static Future<void> notifyBackupResults(
+    OdinVaultApiClient api, String serverId, String serverName,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _ensureBackupMonitorSince(prefs);
+    final since = DateTime.parse(prefs.getString(_backupMonitorSinceKey)!);
+    final overview = await api.backupOverview(take: 500);
+    final key = '$_notifiedBackupsPrefix$serverId';
+    final known = prefs.getStringList(key)?.toSet() ?? <String>{};
+
+    Future<void> notify(String eventId, String database, DateTime? completed,
+        bool succeeded, String? error) async {
+      if (completed == null || completed.isBefore(since) || known.contains(eventId)) return;
+      await showNotification(
+        id: _notificationId('$serverId:$eventId'),
+        serverId: serverId,
+        serverName: serverName,
+        kind: 'backup',
+        title: '$serverName • $database',
+        body: succeeded
+            ? 'بکاپ با موفقیت انجام شد.'
+            : 'بکاپ ناموفق بود: ${error?.trim().isNotEmpty == true ? error : 'خطای نامشخص؛ گزارش سرور را بررسی کنید.'}',
+      );
+      known.add(eventId);
+      // Save after each notification so a later failure does not repeat the batch.
+      await prefs.setStringList(key, known.toList().reversed.take(2000).toList().reversed.toList());
+    }
+
+    final activeBackupIds = overview.jobs
+        .where((job) => job.status == 0 || job.status == 1)
+        .map((job) => job.backupRecordId).toSet();
+    final backupIds = overview.backups.map((backup) => backup.id).toSet();
+    for (final backup in overview.backups.reversed) {
+      if (backup.status != 2 && backup.status != 3) continue;
+      if (activeBackupIds.contains(backup.id) || backup.verificationStatus == 1) continue;
+      final succeeded = backup.status == 2 && backup.verificationStatus != 3;
+      await notify('backup:${backup.id}:${succeeded ? 'ok' : 'failed'}',
+          backup.databaseName, backup.completedAtUtc ?? backup.startedAtUtc,
+          succeeded, backup.error ?? (backup.verificationStatus == 3 ? 'بررسی سلامت بکاپ ناموفق بود.' : null));
+    }
+    // A job can fail before a BackupRecord is created (connection/configuration errors).
+    for (final job in overview.jobs.reversed) {
+      if (job.status != 3 && job.status != 4) continue;
+      if (backupIds.contains(job.backupRecordId)) continue;
+      await notify('job:${job.id}', job.databaseName,
+          job.completedAtUtc ?? job.updatedAtUtc, false,
+          job.errorMessage ?? job.errorCode ?? 'اجرای بکاپ قطع شد.');
     }
   }
 
@@ -314,14 +385,15 @@ class MonitoringService {
     required String body,
     String? alertKey,
   }) async {
-    const android = AndroidNotificationDetails(
+    final android = AndroidNotificationDetails(
       'odinvault_monitoring',
       'پایش OdinVault',
       channelDescription: 'هشدارهای وضعیت Agent و بکاپ‌های OdinVault',
       importance: Importance.high,
       priority: Priority.high,
+      styleInformation: BigTextStyleInformation(body),
     );
-    const details = NotificationDetails(android: android);
+    final details = NotificationDetails(android: android);
     final target = OdinVaultNotificationTarget(
       serverId: serverId,
       kind: kind,
@@ -354,6 +426,7 @@ class MonitoringService {
 
   static Future<List<OdinVaultNotificationHistoryItem>> history() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     final raw = prefs.getString(_notificationHistoryKey);
     if (raw == null || raw.isEmpty) return const [];
 
