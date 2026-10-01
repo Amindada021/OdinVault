@@ -115,8 +115,8 @@ class _ServersPageState extends State<ServersPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => target.databaseId?.isNotEmpty == true
-          ? DatabasePage(server: server, databaseId: target.databaseId!)
-          : AgentPage(server: server)),
+          ? DatabasePage(server: server!, databaseId: target.databaseId!)
+          : AgentPage(server: server!)),
     );
     await MonitoringService.refreshHistoryBadge();
     await _checkAll();
