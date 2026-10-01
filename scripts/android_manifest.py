@@ -47,9 +47,8 @@ def process(path, configure=False):
         raise ValueError("Release APK lacks INTERNET permission")
     if not notifications:
         raise ValueError("Release APK lacks POST_NOTIFICATIONS permission")
-    if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
-        raise ValueError("Release APK lacks BackupDownloadService")
-    if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
+    service_names = {x.get(attr("name")) for x in application.findall("service")}
+    if not ({".BackupDownloadService", "com.odinvault.odinvault_mobile.BackupDownloadService"} & service_names):
         raise ValueError("Release APK lacks BackupDownloadService")
     if application.get(attr("usesCleartextTraffic")) != "true":
         raise ValueError("Release APK does not allow HTTP agents")
