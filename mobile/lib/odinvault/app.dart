@@ -813,6 +813,8 @@ class _AgentPageState extends State<AgentPage> {
   bool refreshing = false;
   bool runningBatch = false;
   String? batchProgressText;
+  int _loadGeneration = 0;
+  DateTime? _lastLoadedAt;
 
   @override
   void initState() {
@@ -821,8 +823,9 @@ class _AgentPageState extends State<AgentPage> {
   }
 
   Future<void> load() async {
-    if (refreshing) return;
+    final generation = ++_loadGeneration;
     setState(() => refreshing = true);
+    final sectionErrors = <String>[];
     try {
       final dbs = await api.databases();
 
@@ -835,32 +838,33 @@ class _AgentPageState extends State<AgentPage> {
         (() async {
           try {
             storageTargets = await api.storageTargets();
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             dashboardValue = await api.dashboard();
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             alertsValue = await api.alerts();
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             overviewValues = await api.databaseOverviews();
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
       ]);
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         databases = dbs;
         targets = storageTargets;
         dashboard = dashboardValue;
         alerts = alertsValue;
-        error = null;
+        error = sectionErrors.isEmpty ? null : 'برخی بخش‌ها به‌روز نشدند: ${sectionErrors.join(' • ')}';
+        _lastLoadedAt = DateTime.now();
         databaseOverviews
           ..clear()
           ..addEntries(overviewValues.map((x) => MapEntry(x.id, x)));
@@ -1254,6 +1258,7 @@ class _AgentPageState extends State<AgentPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
+            if (_lastLoadedAt != null) Text('آخرین دریافت موفق: ${_formatDate(_lastLoadedAt)}', style: Theme.of(context).textTheme.bodySmall),
             if (error != null)
               Card(
                 color: Theme.of(context).colorScheme.errorContainer,
@@ -2276,6 +2281,8 @@ class _DatabasePageState extends State<DatabasePage> {
   String? backupStage;
   int? backupPercent;
   String? error;
+  int _loadGeneration = 0;
+  DateTime? _lastLoadedAt;
 
   @override
   void initState() {
@@ -2284,6 +2291,8 @@ class _DatabasePageState extends State<DatabasePage> {
   }
 
   Future<void> load() async {
+    final generation = ++_loadGeneration;
+    final sectionErrors = <String>[];
     try {
       final database = await api.database(widget.databaseId);
 
@@ -2296,36 +2305,37 @@ class _DatabasePageState extends State<DatabasePage> {
         (() async {
           try {
             detailsValue = await api.databaseDetails(widget.databaseId);
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             historyValue = await api.backups(widget.databaseId);
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             targetsValue = await api.storageTargets();
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
         (() async {
           try {
             linkedValue = await api.databaseStorageTargets(widget.databaseId);
-          } catch (_) {}
+          } catch (e) { sectionErrors.add(OdinVaultApiException.from(e).message); }
         })(),
       ]);
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         db = database;
         details = detailsValue;
         history = historyValue;
         allTargets = targetsValue;
         linkedTargets = linkedValue;
-        error = null;
+        error = sectionErrors.isEmpty ? null : 'برخی بخش‌ها به‌روز نشدند: ${sectionErrors.join(' • ')}';
+        _lastLoadedAt = DateTime.now();
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() => error = OdinVaultApiException.from(e).message);
       }
     }
@@ -2450,7 +2460,8 @@ class _DatabasePageState extends State<DatabasePage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
-            if (error != null) Text(error!),
+
+            if (_lastLoadedAt != null) Text('آخرین دریافت موفق: ${_formatDate(_lastLoadedAt)}', style: Theme.of(context).textTheme.bodySmall),            if (error != null) Text(error!),
             if (database == null)
               const LinearProgressIndicator()
             else ...[
