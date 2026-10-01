@@ -63,6 +63,7 @@ class OdinVaultApiClient {
   }
   final Dio _dio;
   String get baseUrl => _dio.options.baseUrl;
+  String get apiKey => _dio.options.headers['X-OdinVault-Key']?.toString() ?? '';
 
   Future<bool> health() async {
     final response = await _dio.get<Object>('/api/health',

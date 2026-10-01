@@ -30,6 +30,16 @@ def process(path, configure=False):
                 {attr("name"): "android.permission.POST_NOTIFICATIONS"},
             )
         application.set(attr("label"), "OdinVault")
+        if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
+            ET.SubElement(application, "service", {attr("name"): ".BackupDownloadService", attr("exported"): "false", attr("foregroundServiceType"): "dataSync"})
+        for permission in ("android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC"):
+            if not any(p.get(attr("name")) == permission for p in root.findall("uses-permission")):
+                ET.SubElement(root, "uses-permission", {attr("name"): permission})
+        if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
+            ET.SubElement(application, "service", {attr("name"): ".BackupDownloadService", attr("exported"): "false", attr("foregroundServiceType"): "dataSync"})
+        for permission in ("android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_DATA_SYNC"):
+            if not any(p.get(attr("name")) == permission for p in root.findall("uses-permission")):
+                ET.SubElement(root, "uses-permission", {attr("name"): permission})
         application.set(attr("usesCleartextTraffic"), "true")
         tree.write(path, encoding="utf-8", xml_declaration=True)
         return process(path)
@@ -37,6 +47,10 @@ def process(path, configure=False):
         raise ValueError("Release APK lacks INTERNET permission")
     if not notifications:
         raise ValueError("Release APK lacks POST_NOTIFICATIONS permission")
+    if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
+        raise ValueError("Release APK lacks BackupDownloadService")
+    if not any(x.get(attr("name")) == ".BackupDownloadService" for x in application.findall("service")):
+        raise ValueError("Release APK lacks BackupDownloadService")
     if application.get(attr("usesCleartextTraffic")) != "true":
         raise ValueError("Release APK does not allow HTTP agents")
     if application.get(attr("networkSecurityConfig")):

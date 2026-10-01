@@ -21,6 +21,28 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "odinvault/files").setMethodCallHandler { call, result ->
             when (call.method) {
+                "startBackupDownload" -> {
+                    val p = getSharedPreferences("odinvault_download", MODE_PRIVATE)
+                    p.edit().putString("state", "starting").putLong("received", 0).putLong("total", call.argument<Number>("expectedSize")?.toLong() ?: 0L).remove("error").apply()
+                    val intent = Intent(this, BackupDownloadService::class.java).setAction(BackupDownloadService.ACTION_START).apply {
+                        putExtra("baseUrl", call.argument<String>("baseUrl")); putExtra("apiKey", call.argument<String>("apiKey") ?: "")
+                        putExtra("backupId", call.argument<String>("backupId")); putExtra("fileName", call.argument<String>("fileName"))
+                        putExtra("databaseName", call.argument<String>("databaseName")); putExtra("expectedSize", call.argument<Number>("expectedSize")?.toLong() ?: 0L)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+                    result.success(null)
+                }
+                "backupDownloadStatus" -> {
+                    val p = getSharedPreferences("odinvault_download", MODE_PRIVATE)
+                    result.success(mapOf("state" to (p.getString("state", "idle") ?: "idle"), "received" to p.getLong("received", 0),
+                        "total" to p.getLong("total", 0), "error" to p.getString("error", null), "backupId" to p.getString("backup_id", null),
+                        "fileName" to p.getString("file_name", null), "databaseName" to p.getString("database_name", null),
+                        "savedUri" to p.getString("saved_uri", null), "updatedAt" to p.getLong("updated_at", 0)))
+                }
+                "cancelBackupDownload" -> {
+                    startService(Intent(this, BackupDownloadService::class.java).setAction(BackupDownloadService.ACTION_CANCEL))
+                    result.success(null)
+                }
                 "temporaryFile" -> {
                     val folder = File(cacheDir, "backups").apply { mkdirs() }
                     folder.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86400000L }?.forEach { it.delete() }
