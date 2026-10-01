@@ -2533,6 +2533,7 @@ class _DatabasePageState extends State<DatabasePage> {
                                   context,
                                   api,
                                   databaseId: database.id,
+                                  databaseName: database.databaseName,
                                 );
                                 if (!mounted) return;
                                 setState(() => running = false);
@@ -2574,7 +2575,7 @@ class _DatabasePageState extends State<DatabasePage> {
               else if (history!.isEmpty)
                 const Text('هنوز بکاپی ثبت نشده است.')
               else
-                ...history!.map((backup) => BackupTile(api: api, backup: backup)),
+                ...history!.map((backup) => BackupTile(api: api, backup: backup, databaseName: database.databaseName)),
             ],
           ],
         ),
@@ -3494,10 +3495,12 @@ class BackupTile extends StatefulWidget {
     super.key,
     required this.api,
     required this.backup,
+    required this.databaseName,
   });
 
   final OdinVaultApiClient api;
   final OdinVaultBackup backup;
+  final String databaseName;
 
   @override
   State<BackupTile> createState() => _BackupTileState();
@@ -3556,6 +3559,7 @@ class _BackupTileState extends State<BackupTile> {
                   context,
                   widget.api,
                   backup: backup,
+                  databaseName: widget.databaseName,
                 ),
                 icon: const Icon(Icons.download_rounded),
                 label: const Text('دانلود این بکاپ روی گوشی'),

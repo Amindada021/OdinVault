@@ -7,17 +7,18 @@ import 'api_client.dart';
 import 'models.dart';
 
 Future<void> showBackupDownload(BuildContext context, OdinVaultApiClient api,
-    {OdinVaultBackup? backup, String? databaseId}) => showDialog<void>(
+    {required String databaseName, OdinVaultBackup? backup, String? databaseId}) => showDialog<void>(
   context: context,
   barrierDismissible: false,
-  builder: (_) => _BackupDownload(api: api, backup: backup, databaseId: databaseId),
+  builder: (_) => _BackupDownload(api: api, backup: backup, databaseId: databaseId, databaseName: databaseName),
 );
 
 class _BackupDownload extends StatefulWidget {
-  const _BackupDownload({required this.api, this.backup, this.databaseId});
+  const _BackupDownload({required this.api, required this.databaseName, this.backup, this.databaseId});
   final OdinVaultApiClient api;
   final OdinVaultBackup? backup;
   final String? databaseId;
+  final String databaseName;
   @override
   State<_BackupDownload> createState() => _BackupDownloadState();
 }
@@ -46,6 +47,11 @@ class _BackupDownloadState extends State<_BackupDownload> {
   Future<void> run() async {
     setState(() { busy = true; error = null; });
     try {
+      final folder = await files.invokeMethod<String>('ensureBackupFolder');
+      if (!mounted || closed) return;
+      if (folder == null) {
+        throw const OdinVaultApiException('برای ذخیره بکاپ، پوشه OdinVault را بسازید و انتخاب کنید.');
+      }
       await files.invokeMethod<void>('keepAwake', {'enabled': true});
       if (backup == null) {
         if (jobId == null) {
@@ -59,11 +65,14 @@ class _BackupDownloadState extends State<_BackupDownload> {
         while (!closed) {
           final job = await widget.api.backupJob(jobId!);
           if (closed) return;
-          if (job['backup'] is Map) {
+          if (job['stage'] == 'failed' || job['stage'] == 'interrupted' ||
+              job['status'] == 3 || job['status'] == 4) {
+            throw OdinVaultApiException(job['error']?.toString() ?? job['errorMessage']?.toString() ?? 'بکاپ ناموفق بود.');
+          }
+          if (job['stage'] == 'complete' && job['backup'] is Map) {
             backup = OdinVaultBackup.fromJson(Map<String, dynamic>.from(job['backup'] as Map));
             break;
           }
-          if (job['stage'] == 'failed') throw OdinVaultApiException(job['error']?.toString() ?? 'بکاپ ناموفق بود.');
           setState(() {
             stage = job['stage']?.toString() ?? 'backup';
             progress = (job['percent'] as num?)?.toDouble();
@@ -94,7 +103,8 @@ class _BackupDownloadState extends State<_BackupDownload> {
         throw const OdinVaultApiException('حجم فایل دریافت‌شده کامل نیست؛ دوباره دانلود کنید.');
       }
       if (!mounted || closed) return;
-      setState(() { stage = 'ready'; progress = 1; busy = false; });
+      setState(() { stage = 'ready'; progress = 1; });
+      await save();
     } catch (e) {
       if (mounted && !closed) setState(() { error = e is PlatformException ? e.message : OdinVaultApiException.from(e).message; busy = false; });
     } finally {
@@ -105,7 +115,11 @@ class _BackupDownloadState extends State<_BackupDownload> {
   Future<void> save() async {
     setState(() { busy = true; error = null; });
     try {
-      final uri = await files.invokeMethod<String>('saveBackup', {'path': path, 'name': backup!.fileName});
+      final folder = await files.invokeMethod<String>('ensureBackupFolder');
+      if (folder == null) return;
+      final uri = await files.invokeMethod<String>('saveBackup', {
+        'path': path, 'name': backup!.fileName, 'databaseName': widget.databaseName,
+      });
       if (mounted) setState(() { saved = uri != null; });
     } catch (e) {
       if (mounted) setState(() { error = e is PlatformException ? e.message : 'ذخیره فایل انجام نشد.'; });
@@ -137,7 +151,7 @@ class _BackupDownloadState extends State<_BackupDownload> {
     'backup' => 'در حال ساخت بکاپ',
     'verify' => 'بررسی سلامت بکاپ',
     'download' => 'دریافت روی گوشی',
-    'ready' => saved ? 'فایل ذخیره شد' : 'دانلود کامل شد',
+    'ready' => saved ? 'فایل ذخیره شد' : busy ? 'ذخیره روی گوشی' : 'دانلود کامل شد',
     _ => 'آماده‌سازی فایل',
   };
   String bytes(int value) => value >= 1073741824 ? '${(value / 1073741824).toStringAsFixed(2)} GB' : '${(value / 1048576).toStringAsFixed(1)} MB';
@@ -163,8 +177,8 @@ class _BackupDownloadState extends State<_BackupDownload> {
         ],
         const SizedBox(height: 12),
         Text(stage == 'ready'
-            ? saved ? 'نسخه بکاپ در محلی که انتخاب کردی ذخیره شد.' : 'برای نگهداری فایل، «ذخیره در فایل‌های گوشی» را بزن و پوشه دلخواهت را انتخاب کن.'
-            : 'بکاپ سرور با بستن این پنجره متوقف نمی‌شود. برای ادامه دانلود، برنامه را باز نگه دار.', textAlign: TextAlign.center),
+            ? saved ? 'بکاپ در پوشه OdinVault، داخل پوشه ${widget.databaseName} ذخیره شد.' : 'فایل دانلود شده؛ در حال ذخیره در پوشه دیتابیس. اگر ذخیره ناموفق بود دوباره تلاش کنید.'
+            : 'بار اول پوشه OdinVault را در حافظه گوشی بسازید و انتخاب کنید؛ دفعات بعد ذخیره خودکار است. برای ادامه دانلود، برنامه را باز نگه دارید.', textAlign: TextAlign.center),
         if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
       ])),
       actions: [
