@@ -133,12 +133,20 @@ class _ServersPageState extends State<ServersPage> {
 
   Future<void> _showMonitoringSettings() async {
     var enabled = _monitoringEnabled ?? await MonitoringService.isEnabled();
-    final permission = await MonitoringService.notificationPermissionGranted();
+    var busy = false;
+    String? actionMessage;
+    var permission = await MonitoringService.notificationPermissionGranted();
     final monitorStates = <String>[];
-    for (final server in _servers) {
-      final status = await MonitoringService.monitorStatus(server.id);
-      monitorStates.add('${server.name}: آخرین بررسی موفق ${status['lastSuccess'] ?? 'هنوز ثبت نشده'}${status['lastError'] == null ? '' : ' • خطا: ${status['lastError']}'}');
+    Future<void> refreshStatus() async {
+      permission = await MonitoringService.notificationPermissionGranted();
+      monitorStates.clear();
+      for (final server in _servers) {
+        final status = await MonitoringService.monitorStatus(server.id);
+        monitorStates.add('${server.name}: آخرین تلاش ${status['lastAttempt'] ?? 'هنوز ثبت نشده'} • آخرین بررسی موفق ${status['lastSuccess'] ?? 'هنوز ثبت نشده'}${status['lastError'] == null ? '' : ' • خطا: ${status['lastError']}'}');
+        if (status['workerError'] != null) monitorStates.add('خطای اجرای پایش: ${status['workerError']}');
+      }
     }
+    await refreshStatus();
     if (!mounted) return;
 
     await showDialog<void>(
@@ -146,18 +154,20 @@ class _ServersPageState extends State<ServersPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('پایش پس‌زمینه'),
-          content: Column(
+          content: SingleChildScrollView(child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: enabled,
-                onChanged: (value) async {
+                onChanged: busy ? null : (value) async {
                   final previous = enabled;
                   setDialogState(() => enabled = value);
                   try {
                     await MonitoringService.setEnabled(value);
+                    await refreshStatus();
+                    if (context.mounted) setDialogState(() {});
                     if (!mounted) return;
                     setState(() => _monitoringEnabled = value);
                   } catch (e) {
@@ -173,7 +183,7 @@ class _ServersPageState extends State<ServersPage> {
                 },
                 title: const Text('پایش Agentها در پس‌زمینه'),
                 subtitle: const Text(
-                  'در صورت قطع Agent یا خطای جدید بکاپ، Verify و Replica اعلان می‌دهد.',
+                  'نتیجه موفق یا ناموفق بکاپ و هشدارهای Agent، Verify و Replica را اعلام می‌کند.',
                 ),
               ),
               const SizedBox(height: 8),
@@ -182,13 +192,52 @@ class _ServersPageState extends State<ServersPage> {
                 const SizedBox(height: 8),
                 ...monitorStates.map((x) => Text(x, style: Theme.of(context).textTheme.bodySmall)),
               ],
+              if (actionMessage != null) Text(actionMessage!),
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: busy ? null : () async {
+                      setDialogState(() { busy = true; actionMessage = null; });
+                      try {
+                        final ok = await MonitoringService.runNow();
+                        await refreshStatus();
+                        if (!context.mounted) return;
+                        setDialogState(() => actionMessage = ok
+                            ? 'بررسی تمام شد؛ وضعیت هر سرور را در بالا ببینید.'
+                            : 'بررسی ناموفق بود؛ خطای ثبت‌شده را ببینید.');
+                      } catch (e) {
+                        if (context.mounted) setDialogState(() => actionMessage = 'خطا: $e');
+                      } finally {
+                        if (context.mounted) setDialogState(() => busy = false);
+                      }
+                    },
+                    child: Text(busy ? 'در حال بررسی…' : 'بررسی الآن'),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () async {
+                      setDialogState(() => busy = true);
+                      try {
+                        await MonitoringService.testNotification();
+                        await refreshStatus();
+                        if (context.mounted) setDialogState(() => actionMessage = 'اعلان آزمایشی ارسال شد؛ نوار اعلان گوشی را بررسی کنید.');
+                      } catch (e) {
+                        if (context.mounted) setDialogState(() => actionMessage = 'خطای اعلان: $e');
+                      } finally {
+                        if (context.mounted) setDialogState(() => busy = false);
+                      }
+                    },
+                    child: const Text('اعلان آزمایشی'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(
                 'اندروید زمان اجرای دقیق را مدیریت می‌کند؛ بررسی‌ها با WorkManager و حداقل فاصله ۱۵ دقیقه انجام می‌شوند.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
-          ),
+          )),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext),

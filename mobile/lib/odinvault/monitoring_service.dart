@@ -8,6 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 const _monitorTaskUniqueName = 'odinvault-background-monitor';
+const _monitorImmediateName = 'odinvault-monitor-now';
+const _monitorRunErrorKey = 'odinvault_monitor_run_error';
+const _monitorAttemptPrefix = 'odinvault_monitor_attempt_';
 const _monitorTaskName = 'odinvault-monitor-agents';
 const _backupMonitorSinceKey = 'odinvault_backup_monitor_since';
 const _notifiedBackupsPrefix = 'odinvault_notified_backups_';
@@ -108,12 +111,33 @@ void odinVaultBackgroundDispatcher() {
     if (taskName != _monitorTaskName) return true;
 
     try {
-      await MonitoringService.initializeNotifications();
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
       if (!(prefs.getBool(_monitorEnabledKey) ?? true)) return true;
 
+      return await MonitoringService.runNow();
+    } catch (e, stackTrace) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_monitorRunErrorKey, e.toString());
+      debugPrint('OdinVault background monitor failed: $e\n$stackTrace');
+      return false;
+    }
+  });
+}
+
+class MonitoringService {
+  MonitoringService._();
+
+  static Future<bool> runNow() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    await prefs.remove(_monitorRunErrorKey);
+    try {
+      await initializeNotifications();
+      await _ensureBackupMonitorSince(prefs);
       final servers = await OdinVaultServerStore().load();
       for (final server in servers) {
+        await prefs.setString('$_monitorAttemptPrefix${server.id}', DateTime.now().toUtc().toIso8601String());
         final api = OdinVaultApiClient(server, requestTimeout: const Duration(seconds: 15));
         final healthKey = '$_lastHealthPrefix${server.id}';
         final previousHealth = prefs.getBool(healthKey);
@@ -126,6 +150,7 @@ void odinVaultBackgroundDispatcher() {
         }
 
         if (!healthy) {
+          await prefs.setString('$_monitorLastErrorPrefix${server.id}', 'اتصال به Agent برقرار نشد.');
           if (previousHealth != false) {
             await MonitoringService.showNotification(
               id: _notificationId('offline:${server.id}'),
@@ -208,20 +233,30 @@ void odinVaultBackgroundDispatcher() {
           } else {
             await prefs.setStringList(notifiedKey, next.toList());
           }
-        } catch (_) {
-          // Agent health is already known; alert retrieval should not fail the worker.
+        } catch (e) {
+          final key = '$_monitorLastErrorPrefix${server.id}';
+          final previous = prefs.getString(key);
+          await prefs.setString(key, '${previous == null ? '' : '$previous • '}دریافت هشدارها: $e');
         }
       }
       return true;
-    } catch (e, stackTrace) {
-      debugPrint('OdinVault background monitor failed: $e\n$stackTrace');
+    } catch (e) {
+      await prefs.setString(_monitorRunErrorKey, e.toString());
       return false;
     }
-  });
-}
+  }
 
-class MonitoringService {
-  MonitoringService._();
+  static Future<void> testNotification() async {
+    await initializeNotifications();
+    if (!await requestNotificationPermission()) {
+      throw StateError('مجوز اعلان غیرفعال است.');
+    }
+    await showNotification(
+      id: _notificationId('monitor-test'), serverId: '', serverName: 'OdinVault',
+      kind: 'test', title: 'اعلان آزمایشی OdinVault',
+      body: 'نمایش اعلان روی گوشی فعال است. این تست اتصال به Agent را بررسی نمی‌کند.',
+    );
+  }
 
   static Future<void> initialize() async {
     await initializeNotifications();
@@ -308,7 +343,10 @@ class MonitoringService {
 
   static Future<Map<String, String?>> monitorStatus(String serverId) async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     return {
+      'lastAttempt': prefs.getString('$_monitorAttemptPrefix$serverId'),
+      'workerError': prefs.getString(_monitorRunErrorKey),
       'lastSuccess': prefs.getString('$_monitorLastSuccessPrefix$serverId'),
       'lastError': prefs.getString('$_monitorLastErrorPrefix$serverId'),
     };
@@ -329,6 +367,7 @@ class MonitoringService {
       await _schedule();
     } else {
       await Workmanager().cancelByUniqueName(_monitorTaskUniqueName);
+      await Workmanager().cancelByUniqueName(_monitorImmediateName);
     }
   }
 
@@ -343,8 +382,13 @@ class MonitoringService {
   ) async {
     final prefs = await SharedPreferences.getInstance();
     final cursorKey = '$_monitorCursorPrefix$serverId';
-    final initial = prefs.getString(cursorKey);
-    final since = initial == null ? DateTime.now().toUtc() : DateTime.parse(initial).toUtc();
+    await prefs.reload();
+    await _ensureBackupMonitorSince(prefs);
+    if (!await notificationPermissionGranted()) {
+      throw StateError('مجوز اعلان غیرفعال است؛ نتیجه‌ها برای بررسی بعدی نگه داشته شدند.');
+    }
+    final initial = prefs.getString(cursorKey) ?? prefs.getString(_backupMonitorSinceKey)!;
+    final since = DateTime.parse(initial).toUtc();
     DateTime? beforeUtc;
     DateTime? newestServerUtc;
     final key = '$_notifiedBackupsPrefix$serverId';
@@ -408,6 +452,11 @@ class MonitoringService {
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
       constraints: Constraints(networkType: NetworkType.connected),
       tag: 'odinvault-monitoring',
+    );
+    await Workmanager().registerOneOffTask(
+      _monitorImmediateName, _monitorTaskName,
+      existingWorkPolicy: ExistingWorkPolicy.keep,
+      constraints: Constraints(networkType: NetworkType.connected),
     );
   }
 
